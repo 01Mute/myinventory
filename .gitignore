@@ -1,5 +1,6 @@
 .env
 *.log
+PLAN.md
 
 backend/media/
 backend/staticfiles/
