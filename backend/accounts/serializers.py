@@ -1,8 +1,18 @@
-from django.contrib.auth import authenticate, get_user_model
+from random import SystemRandom
+from smtplib import SMTPException
+
+from django.conf import settings
+from django.contrib.auth import authenticate, get_user_model, password_validation
+from django.contrib.auth.hashers import check_password, make_password
+from django.core.mail import send_mail
+from django.utils import timezone
 from rest_framework import serializers
+
+from .models import PasswordResetCode
 
 
 User = get_user_model()
+RESET_CODE_TTL_MINUTES = 10
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -83,3 +93,88 @@ class LoginSerializer(serializers.Serializer):
 
         attrs["user"] = user
         return attrs
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def save(self):
+        email = self.validated_data["email"]
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user:
+            return None
+
+        PasswordResetCode.objects.filter(user=user, used_at__isnull=True).update(
+            used_at=timezone.now(),
+        )
+        code = f"{SystemRandom().randint(0, 999999):06d}"
+        PasswordResetCode.objects.create(
+            user=user,
+            code_hash=make_password(code),
+            expires_at=timezone.now() + timezone.timedelta(minutes=RESET_CODE_TTL_MINUTES),
+        )
+        try:
+            send_mail(
+                subject="Home Inventory Map 비밀번호 재설정 코드",
+                message=(
+                    "비밀번호 재설정 코드입니다.\n\n"
+                    f"코드: {code}\n"
+                    f"유효 시간: {RESET_CODE_TTL_MINUTES}분\n\n"
+                    "본인이 요청하지 않았다면 이 메일을 무시하세요."
+                ),
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                recipient_list=[user.email],
+                fail_silently=False,
+            )
+        except (OSError, SMTPException) as exc:
+            raise serializers.ValidationError(
+                "이메일 발송 설정을 확인하세요."
+            ) from exc
+        return None
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField(min_length=6, max_length=6)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_new_password(self, value):
+        user = self._get_user()
+        if user:
+            password_validation.validate_password(value, user)
+        return value
+
+    def validate(self, attrs):
+        user = self._get_user()
+        if not user:
+            raise serializers.ValidationError("인증 코드가 올바르지 않습니다.")
+
+        reset_code = (
+            PasswordResetCode.objects.filter(user=user, used_at__isnull=True)
+            .order_by("-created_at")
+            .first()
+        )
+        if not reset_code or not reset_code.is_usable():
+            raise serializers.ValidationError("인증 코드가 만료되었습니다.")
+
+        if not check_password(attrs["code"], reset_code.code_hash):
+            reset_code.attempts += 1
+            reset_code.save(update_fields=("attempts",))
+            raise serializers.ValidationError("인증 코드가 올바르지 않습니다.")
+
+        attrs["user"] = user
+        attrs["reset_code"] = reset_code
+        return attrs
+
+    def save(self):
+        user = self.validated_data["user"]
+        reset_code = self.validated_data["reset_code"]
+        user.set_password(self.validated_data["new_password"])
+        user.save(update_fields=("password",))
+        reset_code.used_at = timezone.now()
+        reset_code.save(update_fields=("used_at",))
+        return user
+
+    def _get_user(self):
+        email = self.initial_data.get("email", "")
+        return User.objects.filter(email__iexact=email, is_active=True).first()

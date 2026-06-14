@@ -23,6 +23,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<PublicOnly element={<AuthPage mode="login" />} />} />
       <Route path="/register" element={<PublicOnly element={<AuthPage mode="register" />} />} />
+      <Route path="/forgot-password" element={<PublicOnly element={<AuthPage mode="reset" />} />} />
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
           <Route index element={<StartPage />} />

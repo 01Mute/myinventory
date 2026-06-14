@@ -45,6 +45,13 @@ const emptyItemForm: ItemFormState = {
   tagText: ""
 };
 
+function createItemFormDefaults(): ItemFormState {
+  return {
+    ...emptyItemForm,
+    purchase_date: getTodayDateInputValue()
+  };
+}
+
 export function ItemsPage() {
   const queryClient = useQueryClient();
   const editorPanelRef = useRef<HTMLElement | null>(null);
@@ -343,10 +350,11 @@ export function ItemsPage() {
   }
 
   function openCreatePanel() {
+    const nextForm = createItemFormDefaults();
     setPanelMode("create");
     setSelectedItemId(null);
-    setItemForm(emptyItemForm);
-    setInitialItemForm(emptyItemForm);
+    setItemForm(nextForm);
+    setInitialItemForm(nextForm);
     setPhotoFile(null);
   }
 
@@ -812,6 +820,12 @@ function formatDateTime(value: string | null) {
     month: "2-digit",
     day: "2-digit"
   }).format(new Date(value));
+}
+
+function getTodayDateInputValue() {
+  const now = new Date();
+  const offsetDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return offsetDate.toISOString().slice(0, 10);
 }
 
 function formFromItem(item: Item): ItemFormState {

@@ -1,6 +1,19 @@
 import { FormEvent, PointerEvent, WheelEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, Layers, Maximize2, Move, Pencil, Plus, Save, Square, Trash2 } from "lucide-react";
+import {
+  Armchair,
+  FolderOpen,
+  Layers,
+  Lock,
+  Maximize2,
+  Move,
+  Pencil,
+  Plus,
+  Save,
+  Square,
+  Trash2,
+  Unlock
+} from "lucide-react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -20,6 +33,7 @@ import { buildLocationTree, flattenLocationTree } from "../utils/tree";
 import {
   expandedSizeForRect,
   fallbackRect,
+  isRectGeometry,
   normalizeRect,
   rectContains,
   rectForNode,
@@ -91,6 +105,19 @@ type CanvasViewBox = {
 
 function isDrawableType(nodeType: LocationNodeType) {
   return nodeType === "ROOM" || nodeType === "FURNITURE";
+}
+
+function isNodeLocked(node: LocationNode | null) {
+  return Boolean(node?.metadata_json?.locked);
+}
+
+function sameRect(first: RectGeometry, second: RectGeometry) {
+  return (
+    Math.abs(first.x - second.x) < 0.01 &&
+    Math.abs(first.y - second.y) < 0.01 &&
+    Math.abs(first.width - second.width) < 0.01 &&
+    Math.abs(first.height - second.height) < 0.01
+  );
 }
 
 function isTypingTarget(target: EventTarget | null) {
@@ -169,6 +196,8 @@ export function FloorPlanEditorPage() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
+  const geometryDraftsRef = useRef<Record<number, RectGeometry>>({});
+  const keyboardSaveTimerRef = useRef<number | null>(null);
 
   const homesQuery = useQuery({ queryKey: ["homes"], queryFn: () => api.get<Home[]>("/homes/") });
   const floorPlansQuery = useQuery({
@@ -198,6 +227,19 @@ export function FloorPlanEditorPage() {
   });
   const [stageZoom, setStageZoom] = useState(1);
   const [stagePan, setStagePan] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    geometryDraftsRef.current = geometryDrafts;
+  }, [geometryDrafts]);
+
+  useEffect(
+    () => () => {
+      if (keyboardSaveTimerRef.current) {
+        window.clearTimeout(keyboardSaveTimerRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (floorPlanId) {
@@ -231,6 +273,9 @@ export function FloorPlanEditorPage() {
   );
 
   useEffect(() => {
+    if (floorPlanId) {
+      return;
+    }
     const currentFloorPlanIsVisible = visibleFloorPlans.some(
       (floorPlan) => String(floorPlan.id) === selectedFloorPlanId
     );
@@ -241,7 +286,7 @@ export function FloorPlanEditorPage() {
         visibleFloorPlans[0];
       setSelectedFloorPlanId(String(nextFloorPlan.id));
     }
-  }, [selectedFloorPlanId, visibleFloorPlans]);
+  }, [floorPlanId, selectedFloorPlanId, visibleFloorPlans]);
 
   const selectedFloorPlan = floorPlans.find((item) => String(item.id) === selectedFloorPlanId) ?? null;
 
@@ -271,12 +316,13 @@ export function FloorPlanEditorPage() {
   const tree = useMemo(() => buildLocationTree(floorLocations), [floorLocations]);
   const flatTree = useMemo(() => flattenLocationTree(tree), [tree]);
   const selectedNode = floorLocations.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedNodeLocked = isNodeLocked(selectedNode);
   const selectedNodeIndex = selectedNode
     ? floorLocations.findIndex((node) => node.id === selectedNode.id)
     : -1;
   const selectedRect = useMemo(
     () =>
-      selectedNode && selectedNodeIndex >= 0
+      selectedNode && selectedNodeIndex >= 0 && isDrawableType(selectedNode.node_type)
         ? rectForNode(selectedNode, selectedNodeIndex, geometryDrafts)
         : null,
     [geometryDrafts, selectedNode, selectedNodeIndex]
@@ -310,14 +356,14 @@ export function FloorPlanEditorPage() {
   });
 
   useEffect(() => {
-    if (!selectedNode || !selectedRect) {
+    if (!selectedNode) {
       return;
     }
     setDetailForm({
       node_type: selectedNode.node_type,
       name: selectedNode.name,
-      width: String(Math.round(selectedRect.width)),
-      height: String(Math.round(selectedRect.height))
+      width: selectedRect ? String(Math.round(selectedRect.width)) : "160",
+      height: selectedRect ? String(Math.round(selectedRect.height)) : "96"
     });
   }, [selectedNode, selectedRect]);
 
@@ -350,8 +396,15 @@ export function FloorPlanEditorPage() {
       api.patch<LocationNode>(`/location-nodes/${id}/`, payload),
     onSuccess: (node) => {
       setGeometryDrafts((current) => {
+        const draft = current[node.id];
+        const savedRect = isRectGeometry(node.geometry_json) ? node.geometry_json : null;
+        if (!draft || !savedRect || !sameRect(draft, savedRect)) {
+          geometryDraftsRef.current = current;
+          return current;
+        }
         const next = { ...current };
         delete next[node.id];
+        geometryDraftsRef.current = next;
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ["location-nodes"] });
@@ -436,10 +489,104 @@ export function FloorPlanEditorPage() {
     return () => window.removeEventListener("keydown", handleDeleteKey);
   }, [deleteLocationNode.isPending, floorLocations, flatTree, selectedNode]);
 
+  useEffect(() => {
+    function handleArrowKey(event: KeyboardEvent) {
+      if (
+        !selectedNode ||
+        selectedNodeIndex < 0 ||
+        !isDrawableType(selectedNode.node_type) ||
+        isNodeLocked(selectedNode) ||
+        isTypingTarget(event.target)
+      ) {
+        return;
+      }
+
+      const movementByKey: Record<string, { x: number; y: number }> = {
+        ArrowUp: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 }
+      };
+      const movement = movementByKey[event.key];
+      if (!movement) {
+        return;
+      }
+
+      event.preventDefault();
+      const amount = event.shiftKey ? 10 : 1;
+      const currentRect = rectForNode(selectedNode, selectedNodeIndex, geometryDraftsRef.current);
+      const nextRect = constrainRect(
+        {
+          ...currentRect,
+          x: currentRect.x + movement.x * amount,
+          y: currentRect.y + movement.y * amount
+        },
+        selectedNode.node_type
+      );
+      applyGeometryDraft(selectedNode.id, nextRect);
+      scheduleGeometrySave(selectedNode, nextRect);
+    }
+
+    window.addEventListener("keydown", handleArrowKey);
+    return () => window.removeEventListener("keydown", handleArrowKey);
+  }, [selectedNode, selectedNodeIndex]);
+
   function createRectangle() {
     if (selectedFloorPlan) {
       createNode.mutate("ROOM");
     }
+  }
+
+  function createFurnitureRectangle() {
+    if (selectedFloorPlan) {
+      createNode.mutate("FURNITURE");
+    }
+  }
+
+  function applyGeometryDraft(nodeId: number, rect: RectGeometry) {
+    const nextDrafts = {
+      ...geometryDraftsRef.current,
+      [nodeId]: rect
+    };
+    geometryDraftsRef.current = nextDrafts;
+    setGeometryDrafts(nextDrafts);
+  }
+
+  function cancelScheduledGeometrySave() {
+    if (!keyboardSaveTimerRef.current) {
+      return;
+    }
+
+    window.clearTimeout(keyboardSaveTimerRef.current);
+    keyboardSaveTimerRef.current = null;
+  }
+
+  function scheduleGeometrySave(node: LocationNode, rect: RectGeometry) {
+    cancelScheduledGeometrySave();
+    keyboardSaveTimerRef.current = window.setTimeout(() => {
+      keyboardSaveTimerRef.current = null;
+      maybeExpandFloorPlan(rect);
+      updateNode.mutate({
+        id: node.id,
+        payload: buildGeometryPayload(node, rect, geometryDraftsRef.current)
+      });
+    }, 140);
+  }
+
+  function toggleSelectedLock() {
+    if (!selectedNode || !isDrawableType(selectedNode.node_type) || updateNode.isPending) {
+      return;
+    }
+
+    updateNode.mutate({
+      id: selectedNode.id,
+      payload: {
+        metadata_json: {
+          ...selectedNode.metadata_json,
+          locked: !isNodeLocked(selectedNode)
+        }
+      }
+    });
   }
 
   function renameSelectedFloorPlan() {
@@ -646,25 +793,33 @@ export function FloorPlanEditorPage() {
     });
   }
 
-  function findContainingRoomId(rect: RectGeometry, excludeNodeId?: number) {
+  function findContainingRoomId(
+    rect: RectGeometry,
+    excludeNodeId?: number,
+    drafts: Record<number, RectGeometry> = geometryDrafts
+  ) {
     const containingRoom = floorLocations.find((node, index) => {
       if (node.id === excludeNodeId || node.node_type !== "ROOM") {
         return false;
       }
-      return rectContains(rectForNode(node, index, geometryDrafts), rect);
+      return rectContains(rectForNode(node, index, drafts), rect);
     });
 
     return containingRoom?.id ?? null;
   }
 
-  function buildGeometryPayload(node: LocationNode, rect: RectGeometry) {
+  function buildGeometryPayload(
+    node: LocationNode,
+    rect: RectGeometry,
+    drafts: Record<number, RectGeometry> = geometryDrafts
+  ) {
     if (node.node_type !== "FURNITURE") {
       return {
         geometry_json: rect
       };
     }
 
-    const parentId = findContainingRoomId(rect, node.id);
+    const parentId = findContainingRoomId(rect, node.id, drafts);
     const shouldRegenerateCode = parentId !== (node.parent ?? null);
     return {
       parent: parentId,
@@ -695,8 +850,13 @@ export function FloorPlanEditorPage() {
     event.preventDefault();
     event.stopPropagation();
     panRef.current = null;
-    event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedNodeId(node.id);
+    if (isNodeLocked(node)) {
+      return;
+    }
+
+    cancelScheduledGeometrySave();
+    event.currentTarget.setPointerCapture(event.pointerId);
     const svgEvent = event as unknown as PointerEvent<SVGSVGElement>;
     const point = pointFromEvent(svgEvent);
     dragRef.current = {
@@ -732,6 +892,7 @@ export function FloorPlanEditorPage() {
             height: active.origin.height + dy
           };
     const activeNode = floorLocations.find((node) => node.id === active.nodeId);
+    const currentDrafts = geometryDraftsRef.current;
     const snapTargets = floorLocations
       .filter(
         (node) =>
@@ -741,12 +902,12 @@ export function FloorPlanEditorPage() {
       )
       .map((node) => {
         const index = floorLocations.findIndex((location) => location.id === node.id);
-        return rectForNode(node, index, geometryDrafts);
+        return rectForNode(node, index, currentDrafts);
       });
     const snapped = snapRect(next, snapTargets, selectedFloorPlan.width, selectedFloorPlan.height);
     const normalized = constrainRect(snapped, activeNode?.node_type ?? "ROOM");
     dragRef.current = { ...active, latest: normalized };
-    setGeometryDrafts((current) => ({ ...current, [active.nodeId]: normalized }));
+    applyGeometryDraft(active.nodeId, normalized);
   }
 
   function handleCanvasWheel(event: WheelEvent<HTMLDivElement>) {
@@ -811,7 +972,7 @@ export function FloorPlanEditorPage() {
     maybeExpandFloorPlan(active.latest);
     updateNode.mutate({
       id: active.nodeId,
-      payload: buildGeometryPayload(node, active.latest)
+      payload: buildGeometryPayload(node, active.latest, geometryDraftsRef.current)
     });
   }
 
@@ -903,9 +1064,16 @@ export function FloorPlanEditorPage() {
         </label>
         <IconButton
           icon={Square}
-          label="사각형 추가"
+          label="방 추가"
           disabled={!selectedFloorPlan || createNode.isPending}
           onClick={createRectangle}
+        />
+        <IconButton
+          icon={Armchair}
+          label="가구 추가"
+          variant="warning"
+          disabled={!selectedFloorPlan || createNode.isPending}
+          onClick={createFurnitureRectangle}
         />
         <IconButton
           icon={Pencil}
@@ -972,10 +1140,11 @@ export function FloorPlanEditorPage() {
                   const rect = rectForNode(node, index >= 0 ? index : 0, geometryDrafts);
                   const colors = palette[node.node_type];
                   const selected = node.id === selectedNodeId;
+                  const locked = isNodeLocked(node);
                   return (
                     <g
                       key={node.id}
-                      className={selected ? "shape selected" : "shape"}
+                      className={`shape ${selected ? "selected" : ""} ${locked ? "locked" : ""}`}
                       onPointerDown={(event) => startPointer(event, node, rect, "move")}
                     >
                       <rect
@@ -1009,7 +1178,7 @@ export function FloorPlanEditorPage() {
                       >
                         {node.full_code}
                       </text>
-                      {selected ? (
+                      {selected && !locked ? (
                         <rect
                           className="resize-handle"
                           x={rect.x + rect.width - 12}
@@ -1034,6 +1203,18 @@ export function FloorPlanEditorPage() {
               <Maximize2 aria-hidden="true" />
               선택 위치
             </h2>
+            {selectedNode && isDrawableType(selectedNode.node_type) ? (
+              <button
+                className={`icon-only ${selectedNodeLocked ? "locked" : ""}`}
+                type="button"
+                title={selectedNodeLocked ? "잠금 해제" : "잠금"}
+                aria-label={selectedNodeLocked ? "잠금 해제" : "잠금"}
+                disabled={updateNode.isPending}
+                onClick={toggleSelectedLock}
+              >
+                {selectedNodeLocked ? <Lock aria-hidden="true" /> : <Unlock aria-hidden="true" />}
+              </button>
+            ) : null}
           </div>
           {selectedNode ? (
             <>

@@ -4,7 +4,15 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from accounts.views import CsrfView, LoginView, LogoutView, MeView, RegisterView
+from accounts.views import (
+    CsrfView,
+    LoginView,
+    LogoutView,
+    MeView,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
+    RegisterView,
+)
 from homes.views import FloorPlanViewSet, HomeViewSet
 from items.views import CategoryViewSet, ItemViewSet, TagViewSet
 from locations.views import LocationNodeByFloorPlanView, LocationNodeViewSet
@@ -25,6 +33,16 @@ urlpatterns = [
     path("api/auth/login/", LoginView.as_view(), name="auth-login"),
     path("api/auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("api/auth/me/", MeView.as_view(), name="auth-me"),
+    path(
+        "api/auth/password-reset/request/",
+        PasswordResetRequestView.as_view(),
+        name="auth-password-reset-request",
+    ),
+    path(
+        "api/auth/password-reset/confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="auth-password-reset-confirm",
+    ),
     path(
         "api/floor-plans/<int:floor_plan_id>/location-nodes/",
         LocationNodeByFloorPlanView.as_view(),

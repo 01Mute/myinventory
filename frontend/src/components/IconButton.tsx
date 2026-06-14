@@ -4,7 +4,7 @@ import type { LucideIcon } from "lucide-react";
 type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   icon: LucideIcon;
   label: string;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "warning";
 };
 
 export function IconButton({

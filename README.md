@@ -13,6 +13,7 @@
     * PostgreSQL 데이터베이스 연결
     * Django Admin 등록
     * 세션 기반 회원가입, 로그인, 로그아웃, 내 정보 API 제공
+    * 이메일 인증 코드 기반 비밀번호 찾기 API 제공
 
     ### 2. 집 / 도면 관리
 
@@ -50,6 +51,7 @@
     * 빈 공간 클릭 시 수정 패널 닫기 및 저장 여부 확인
     * 물건 수정 패널 및 목록 행에서 물건 삭제
     * 구매일자 입력
+    * 물건 등록 시 구매일자 오늘 날짜 기본 설정
     * 물건, 위치, 수량, 마지막 검색일자 표시
     * 동일 이름 물건 등록 전 확인창 표시
 
@@ -84,6 +86,7 @@
     * 도면 배치 영역 배경 드래그 이동
     * 도면 배치 영역 스크롤바 제거
     * 방/가구 드래그 이동 우선 처리
+    * 선택 사각형 방향키 미세 이동 및 입력 정지 후 서버 저장
     * 사각형 드래그에 따른 좌우상하 무제한 표시 범위 확장
     * 도면 경계 10px 밖으로 나가기 전까지 표시 범위 확장 지연
     * 사각형 배치에 따른 도면 크기 자동 확장
@@ -93,6 +96,10 @@
     * 가구 사각형을 방 위에 표시
     * 같은 타입 도형과 도면 경계 기준 자동 정렬
     * 가구가 방 안에 들어가면 상위 위치 자동 할당
+    * 잠기지 않은 사각형 점선 표시
+    * 선택 위치 잠금 및 잠금 시 실선 표시, 드래그/방향키 이동/크기 조절 차단
+    * 방 추가 버튼과 가구 추가 버튼 분리
+    * 잘못된 임시 좌표로 인한 배치 화면 깨짐 방지
 
     ### 9. 가구 내부 칸 관리
 
@@ -106,6 +113,7 @@
 
     * React + TypeScript 기반 프론트엔드 구현
     * 로그인 / 회원가입 화면 제공
+    * 기존 비밀번호 입력 없는 이메일 코드 기반 비밀번호 찾기 화면 제공
     * 로그인 후 집과 도면이 있으면 물건 검색 화면을 첫 화면으로 표시
     * 집 / 도면 관리 화면 제공
     * 도면 편집 화면 제공
@@ -163,6 +171,20 @@ CSRF_TRUSTED_ORIGINS=https://your-domain.com
 POSTGRES_PASSWORD=강한 비밀번호
 ```
 
+비밀번호 찾기 메일을 실제로 보내려면 `.env`에 SMTP 값도 설정합니다.
+DuckDNS 도메인만으로는 이메일 발송이 되지 않으므로 Gmail 앱 비밀번호, AWS SES, Mailgun 같은 SMTP 발송 계정이 필요합니다.
+
+```text
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.example.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=SMTP 사용자
+EMAIL_HOST_PASSWORD=SMTP 비밀번호 또는 앱 비밀번호
+EMAIL_USE_TLS=true
+EMAIL_USE_SSL=false
+DEFAULT_FROM_EMAIL=no-reply@example.com
+```
+
 도메인 없이 같은 PC에서만 확인할 때는 `localhost,127.0.0.1` 값을 유지해도 됩니다.
 실제 HTTPS 배포에서는 `DJANGO_SESSION_COOKIE_SECURE=true`, `DJANGO_CSRF_COOKIE_SECURE=true`로 바꿉니다.
 
@@ -197,6 +219,8 @@ GET  /api/auth/csrf/
 POST /api/auth/login/
 POST /api/auth/logout/
 GET  /api/auth/me/
+POST /api/auth/password-reset/request/
+POST /api/auth/password-reset/confirm/
 
 GET/POST/PATCH/DELETE /api/homes/
 GET/POST/PATCH/DELETE /api/floor-plans/

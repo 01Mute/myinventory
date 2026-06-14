@@ -75,6 +75,10 @@ td span,
 }
 
 .auth-switch {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 16px;
   margin-top: 18px;
   text-align: center;
 }
@@ -241,6 +245,7 @@ td span,
   grid-template-columns:
     minmax(180px, 260px)
     minmax(180px, 260px)
+    minmax(130px, 170px)
     minmax(130px, 170px)
     minmax(150px, 190px);
   align-items: end;
@@ -412,6 +417,12 @@ textarea:focus {
   color: #ffffff;
 }
 
+.button-warning {
+  border-color: #d39b1d;
+  background: #f4b83f;
+  color: #33250a;
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -549,6 +560,16 @@ textarea:focus {
   background: #fff5f1;
   color: #8b352b;
   white-space: pre-wrap;
+}
+
+.success-banner {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #9bc9b7;
+  border-radius: 8px;
+  background: #edf8f2;
+  color: #1f644f;
+  font-weight: 700;
 }
 
 .tree-list {
@@ -994,6 +1015,12 @@ button.location-picker-row {
 
 .shape rect {
   cursor: grab;
+  stroke-dasharray: 8 6;
+}
+
+.shape.locked rect {
+  cursor: default;
+  stroke-dasharray: none;
 }
 
 .shape text {
@@ -1008,6 +1035,7 @@ button.location-picker-row {
   fill: #17202a;
   stroke: #ffffff;
   stroke-width: 2;
+  stroke-dasharray: none;
   cursor: nwse-resize;
 }
 
@@ -1211,6 +1239,12 @@ button.location-picker-row {
 .icon-only:hover {
   border-color: #d8e0e5;
   background: #ffffff;
+}
+
+.icon-only.locked {
+  border-color: #d39b1d;
+  background: #fff4d6;
+  color: #8b5f16;
 }
 
 .icon-only.danger {

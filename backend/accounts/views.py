@@ -3,7 +3,13 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import generics, permissions, response, status, views
 
-from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from .serializers import (
+    LoginSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    RegisterSerializer,
+    UserSerializer,
+)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -50,3 +56,31 @@ class CsrfView(views.APIView):
     @method_decorator(ensure_csrf_cookie)
     def get(self, request):
         return response.Response({"detail": "CSRF cookie set."})
+
+
+class PasswordResetRequestView(views.APIView):
+    permission_classes = (permissions.AllowAny,)
+    authentication_classes = ()
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return response.Response(
+            {"detail": "비밀번호 재설정 코드가 발송되었습니다."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetConfirmView(views.APIView):
+    permission_classes = (permissions.AllowAny,)
+    authentication_classes = ()
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return response.Response(
+            {"detail": "비밀번호가 변경되었습니다."},
+            status=status.HTTP_200_OK,
+        )

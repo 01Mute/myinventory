@@ -9,9 +9,13 @@ export function isRectGeometry(value: unknown): value is RectGeometry {
   return (
     geometry.type === "rect" &&
     typeof geometry.x === "number" &&
+    Number.isFinite(geometry.x) &&
     typeof geometry.y === "number" &&
+    Number.isFinite(geometry.y) &&
     typeof geometry.width === "number" &&
-    typeof geometry.height === "number"
+    Number.isFinite(geometry.width) &&
+    typeof geometry.height === "number" &&
+    Number.isFinite(geometry.height)
   );
 }
 
@@ -31,7 +35,7 @@ export function rectForNode(
   index: number,
   drafts: Record<number, RectGeometry>
 ) {
-  if (drafts[node.id]) {
+  if (isRectGeometry(drafts[node.id])) {
     return drafts[node.id];
   }
   if (isRectGeometry(node.geometry_json)) {
