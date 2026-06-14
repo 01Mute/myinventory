@@ -82,6 +82,21 @@ export function AuthPage({ mode }: AuthPageProps) {
 
         <ErrorBanner error={error} />
         {notice ? <div className="success-banner">{notice}</div> : null}
+        {mode === "login" ? (
+          <div className="demo-account">
+            <span>테스트 계정</span>
+            <strong>ID test / PW test1234</strong>
+            <button
+              type="button"
+              onClick={() => {
+                setIdentifier("test");
+                setPassword("test1234");
+              }}
+            >
+              입력
+            </button>
+          </div>
+        ) : null}
 
         <form className="form-grid" onSubmit={handleSubmit}>
           {isReset ? (
