@@ -40,7 +40,12 @@ import {
   snapRect
 } from "../utils/geometry";
 import { nextLocationCode } from "../utils/locationCodes";
-import { readRecentFloorPlanId, saveRecentFloorPlanId } from "../utils/recentFloorPlan";
+import {
+  readFloorPlanViewport,
+  readRecentFloorPlanId,
+  saveFloorPlanViewport,
+  saveRecentFloorPlanId
+} from "../utils/recentFloorPlan";
 
 const editableTypes: LocationNodeType[] = ["ROOM", "FURNITURE"];
 const CANVAS_EXPANSION_THRESHOLD = 10;
@@ -295,6 +300,18 @@ export function FloorPlanEditorPage() {
       saveRecentFloorPlanId(selectedFloorPlan.id);
     }
   }, [selectedFloorPlan]);
+
+  useEffect(() => {
+    if (!selectedFloorPlanId) {
+      setStageZoom(1);
+      setStagePan({ x: 0, y: 0 });
+      return;
+    }
+
+    const savedViewport = readFloorPlanViewport(selectedFloorPlanId);
+    setStageZoom(savedViewport?.zoom ?? 1);
+    setStagePan(savedViewport?.pan ?? { x: 0, y: 0 });
+  }, [selectedFloorPlanId]);
   const floorLocations = useMemo(
     () => locations.filter((node) => String(node.floor_plan) === selectedFloorPlanId),
     [locations, selectedFloorPlanId]
@@ -915,7 +932,9 @@ export function FloorPlanEditorPage() {
     const direction = event.deltaY < 0 ? 1 : -1;
     setStageZoom((current) => {
       const next = current + direction * 0.12;
-      return Math.min(3, Math.max(0.35, Number(next.toFixed(2))));
+      const nextZoom = Math.min(3, Math.max(0.35, Number(next.toFixed(2))));
+      rememberViewport(nextZoom, stagePan);
+      return nextZoom;
     });
   }
 
@@ -950,9 +969,22 @@ export function FloorPlanEditorPage() {
     const box = svg.getBoundingClientRect();
     const dx = ((event.clientX - active.startClientX) / box.width) * active.viewBox.width;
     const dy = ((event.clientY - active.startClientY) / box.height) * active.viewBox.height;
-    setStagePan({
+    const nextPan = {
       x: active.originX - dx,
       y: active.originY - dy
+    };
+    setStagePan(nextPan);
+    rememberViewport(stageZoom, nextPan);
+  }
+
+  function rememberViewport(zoom: number, pan: { x: number; y: number }) {
+    if (!selectedFloorPlanId) {
+      return;
+    }
+
+    saveFloorPlanViewport(selectedFloorPlanId, {
+      zoom,
+      pan
     });
   }
 
