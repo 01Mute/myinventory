@@ -200,6 +200,32 @@ export function ItemsPage() {
     };
   }, [debouncedSearchText, filters.q, queryClient, searchParams, touchSearchParams]);
 
+  useEffect(() => {
+    if (panelMode !== "edit" || !selectedItemId) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api
+        .post<Item>(`/items/${selectedItemId}/touch-last-checked/`)
+        .then((touchedItem) => {
+          if (cancelled) {
+            return;
+          }
+          queryClient.setQueriesData<Item[]>({ queryKey: ["items"] }, (current) =>
+            mergeItems(current, [touchedItem])
+          );
+        })
+        .catch(() => undefined);
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [panelMode, queryClient, selectedItemId]);
+
   const saveItem = useMutation({
     mutationFn: async () => {
       const categoryId = await resolveCategoryId();

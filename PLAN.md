@@ -2,7 +2,7 @@
 
 ## 0. 진행 현황
 
-최종 업데이트: 2026-06-13
+최종 업데이트: 2026-06-15
 
 현재 구현 위치:
 
@@ -28,6 +28,9 @@ C:\Users\dbdkd\Documents\Codex\2026-06-12\files-mentioned-by-the-user-item\outpu
 - 백엔드 Python 파일 40개 문법 파싱 성공
 - `docker compose --env-file .env.example -f docker-compose.yml config --quiet` 성공
 - `docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet` 성공
+- 면접용 기술 스택 설명 문서 `INTERVIEW_TECH_STACK_GUIDE.md` 작성 완료
+- 면접 발표용 PPT `outputs/home-inventory-map-interview-tech-stack.pptx` 작성 완료
+- PPT는 12장으로 렌더링 확인, PowerPoint 패키지 내 슬라이드 수와 한글 글꼴 정보 확인 완료
 - 전체 컨테이너 실행 검증은 아직 미완료
 - 로컬 Python 환경에 Django가 설치되어 있지 않아 `python manage.py check`는 미완료
 - 앱 브라우저 도구가 현재 세션에 노출되지 않아 화면 클릭 검증은 미완료
@@ -97,6 +100,7 @@ C:\Users\dbdkd\Documents\Codex\2026-06-12\files-mentioned-by-the-user-item\outpu
 - 물건 검색에서 위치를 선택하면 하위 위치까지 자동으로 포함해 검색한다.
 - 마지막 검색일자는 검색어가 1초 동안 변하지 않은 뒤, 해당 검색어 결과에 대해서만 갱신된다.
 - 마지막 검색일자 갱신 결과는 검색 목록과 전체 목록 캐시에 함께 반영된다.
+- 물건 검색 목록에서 물건을 클릭해 수정 패널을 연 뒤 1초가 지나면 해당 물건의 마지막 검색일자를 서버 시간으로 자동 갱신한다.
 - 카테고리/위치/태그 필터만 바꾸는 조회는 마지막 검색일자를 갱신하지 않는다.
 - 물건 등록/수정 패널에서 JPG, PNG, GIF, WEBP 사진만 선택하고 미리볼 수 있으며, 저장 시 서버에서도 실제 이미지 여부를 검증한다.
 - 물건 상세 패널에서 위치 이동 이력을 시간순으로 확인할 수 있다.
@@ -761,6 +765,7 @@ MEDIA_ROOT=
 - 위치 필터에서 선택 위치 아래의 물건까지 자동 조회
 - 검색어가 1초 동안 멈춘 뒤 해당 검색어 결과에 대해서만 `last_checked_at` 갱신
 - 검색일자 갱신 결과를 검색 목록과 전체 목록 캐시에 함께 반영
+- `/api/items/{id}/touch-last-checked/` API와 수정 패널 1초 지연 호출로 클릭한 물건의 `last_checked_at` 갱신
 - CSV 내보내기 버튼은 물건 페이지에서 제거
 
 검증:

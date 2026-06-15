@@ -223,6 +223,16 @@ class ItemViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"], url_path="touch-last-checked")
+    def touch_last_checked(self, request, pk=None):
+        item = self.get_object()
+        item.last_checked_at = timezone.now()
+        item.save(update_fields=["last_checked_at", "updated_at"])
+        return response.Response(
+            ItemSerializer(item, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
     @transaction.atomic
     @action(detail=True, methods=["post"])
     def move(self, request, pk=None):
