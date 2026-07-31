@@ -1213,8 +1213,8 @@ export function FloorPlanEditorPage() {
                       {selected && !locked ? (
                         <rect
                           className="resize-handle"
-                          x={rect.x + rect.width - 12}
-                          y={rect.y + rect.height - 12}
+                          x={rect.x + rect.width - 18}
+                          y={rect.y + rect.height - 18}
                           width="18"
                           height="18"
                           rx="4"
