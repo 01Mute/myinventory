@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Django tests
+    runs-on: ubuntu-latest
+
+    # Runs against real Postgres rather than sqlite so migrations are exercised
+    # the way they run in production. Several of them are Postgres-specific
+    # (partial unique indexes, index renames) and would pass vacuously on sqlite.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: home_inventory
+          POSTGRES_USER: home_inventory
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Run tests
+        run: python manage.py test --verbosity 2
+        working-directory: backend
+        env:
+          # Settings refuse to start without a key when DEBUG is false, and
+          # running the suite with DEBUG on would hide misconfiguration that
+          # only shows up in production.
+          DJANGO_SECRET_KEY: ci-only-key-not-used-anywhere-else
+          DJANGO_DEBUG: 'false'
+          DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+          POSTGRES_DB: home_inventory
+          POSTGRES_USER: home_inventory
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '5432'
+
+      - name: Check for missing migrations
+        # Catches a model edited without makemigrations, which would otherwise
+        # only surface as a column-missing error after deploying.
+        run: python manage.py makemigrations --check --dry-run
+        working-directory: backend
+        env:
+          DJANGO_SECRET_KEY: ci-only-key-not-used-anywhere-else
+          DJANGO_DEBUG: 'false'
+          DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+          POSTGRES_DB: home_inventory
+          POSTGRES_USER: home_inventory
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '5432'
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # `npm run build` is `tsc -b && vite build`, so this is the type check as
+      # well as the build. A type error fails the job before vite runs.
+      - name: Type check and build
+        run: npm run build
+        working-directory: frontend
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A malformed production compose file is only discovered at deploy time
+      # otherwise, on the server, with the site already down.
+      - name: Validate docker-compose.prod.yml
+        run: docker compose -f docker-compose.prod.yml config --quiet
+        env:
+          DOMAIN: example.com
+          DJANGO_SECRET_KEY: ci
+          DJANGO_ALLOWED_HOSTS: example.com
+          CSRF_TRUSTED_ORIGINS: https://example.com
+          POSTGRES_DB: ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
