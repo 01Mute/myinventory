@@ -72,16 +72,46 @@ services:
       dockerfile: ./nginx/Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
     ports:
       - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
       - backend_static:/var/www/static:ro
       - backend_media:/var/www/media:ro
+      - certbot_etc:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
     depends_on:
       - backend
+    restart: unless-stopped
+    # nginx reads the certificate once at startup and holds it, so a renewal
+    # done by the certbot container is invisible until nginx reloads. The loop
+    # reloads periodically; renewals happen roughly monthly, so a 12h lag is
+    # far inside the 30 days certbot leaves before expiry.
+    command: >
+      sh -c "while :; do sleep 12h & wait $${!}; nginx -s reload; done &
+             nginx -g 'daemon off;'"
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Certificates last 90 days and certbot only acts once one is within 30 days
+    # of expiring, so this mostly no-ops. Twice a day is what the ACME client
+    # docs recommend, to spread load and to survive a failed attempt.
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do
+             certbot renew --webroot -w /var/www/certbot --quiet;
+             sleep 12h & wait $${!}; done"
+    depends_on:
+      - nginx
     restart: unless-stopped
 
 volumes:
   postgres_data:
   backend_static:
   backend_media:
+  certbot_etc:
+  certbot_www:

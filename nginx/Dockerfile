@@ -13,7 +13,10 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+# Goes to templates/ rather than conf.d/ so the entrypoint renders ${DOMAIN}
+# into it at startup. A file dropped straight into conf.d/ is served verbatim
+# and the placeholder would reach nginx unsubstituted.
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
 
 EXPOSE 80
