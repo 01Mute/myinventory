@@ -1073,11 +1073,25 @@ button.location-picker-row {
 }
 
 .resize-handle {
-  fill: #17202a;
-  stroke: #ffffff;
-  stroke-width: 2;
-  stroke-dasharray: none;
   cursor: nwse-resize;
+}
+
+.resize-handle-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.resize-handle-dot {
+  fill: #ffffff;
+  stroke: var(--handle-color, #217a61);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 1px 2px rgb(23 32 42 / 28%));
+  transition: fill 120ms ease;
+}
+
+.resize-handle:hover .resize-handle-dot,
+.resize-handle:active .resize-handle-dot {
+  fill: var(--handle-color, #217a61);
 }
 
 .node-stack {

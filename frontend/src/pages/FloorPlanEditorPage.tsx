@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Armchair,
@@ -1254,15 +1254,25 @@ export function FloorPlanEditorPage() {
                         {node.full_code}
                       </text>
                       {selected && !locked ? (
-                        <rect
+                        <g
                           className="resize-handle"
-                          x={rect.x + rect.width - 18}
-                          y={rect.y + rect.height - 18}
-                          width="18"
-                          height="18"
-                          rx="4"
+                          style={{ "--handle-color": colors.stroke } as CSSProperties}
                           onPointerDown={(event) => startPointer(event, node, rect, "resize")}
-                        />
+                        >
+                          <circle
+                            className="resize-handle-hit"
+                            cx={rect.x + rect.width - 11}
+                            cy={rect.y + rect.height - 11}
+                            r="14"
+                          />
+                          <circle
+                            className="resize-handle-dot"
+                            cx={rect.x + rect.width - 11}
+                            cy={rect.y + rect.height - 11}
+                            r="7"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        </g>
                       ) : null}
                     </g>
                   );
