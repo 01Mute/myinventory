@@ -20,12 +20,6 @@ import { toggleSetValue } from "../utils/sets";
 const NEW_CATEGORY_VALUE = "__new_category__";
 const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
 
-const statusLabels: [Item["status"], string][] = [
-  ["ACTIVE", "보관 중"],
-  ["MISSING", "분실"],
-  ["ARCHIVED", "보관 종료"]
-];
-
 type PanelMode = "create" | "edit" | null;
 
 type ItemFormState = {
@@ -36,8 +30,6 @@ type ItemFormState = {
   quantity: string;
   current_location_node: string;
   purchase_date: string;
-  purchase_price: string;
-  status: Item["status"];
   tagText: string;
 };
 
@@ -49,8 +41,6 @@ const emptyItemForm: ItemFormState = {
   quantity: "1",
   current_location_node: "",
   purchase_date: "",
-  purchase_price: "",
-  status: "ACTIVE",
   tagText: ""
 };
 
@@ -251,8 +241,6 @@ export function ItemsPage() {
           ? Number(itemForm.current_location_node)
           : null,
         purchase_date: itemForm.purchase_date || null,
-        purchase_price: itemForm.purchase_price.trim() || null,
-        status: itemForm.status,
         tag_ids: tagIds
       };
 
@@ -524,7 +512,7 @@ export function ItemsPage() {
             검색
           </h2>
           <div className="row-actions">
-            <span className="count-pill">{items.length} 결과</span>
+            <span className="count-pill">총 {items.length}건</span>
             <IconButton
               icon={Plus}
               label="물건 추가"
@@ -765,7 +753,7 @@ export function ItemsPage() {
                   />
                 </label>
                 <label>
-                  구매일자
+                  보관일자
                   <input
                     type="date"
                     value={itemForm.purchase_date}
@@ -773,35 +761,6 @@ export function ItemsPage() {
                       setItemForm({ ...itemForm, purchase_date: event.target.value })
                     }
                   />
-                </label>
-              </div>
-              <div className="inline-fields">
-                <label>
-                  구매가격
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={itemForm.purchase_price}
-                    onChange={(event) =>
-                      setItemForm({ ...itemForm, purchase_price: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  상태
-                  <select
-                    value={itemForm.status}
-                    onChange={(event) =>
-                      setItemForm({ ...itemForm, status: event.target.value as Item["status"] })
-                    }
-                  >
-                    {statusLabels.map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
                 </label>
               </div>
               <label>
@@ -921,8 +880,6 @@ function formFromItem(item: Item): ItemFormState {
     quantity: String(item.quantity),
     current_location_node: item.current_location_node ? String(item.current_location_node) : "",
     purchase_date: item.purchase_date ?? "",
-    purchase_price: item.purchase_price ?? "",
-    status: item.status,
     tagText: item.tags.map((tag) => `#${tag.name}`).join(" ")
   };
 }
