@@ -151,9 +151,34 @@ class LocationNodeTreeSerializer(serializers.ModelSerializer):
         )
 
     def get_children(self, obj):
-        children = obj.children.all().order_by("sort_order", "name", "id")
-        return LocationNodeTreeSerializer(
-            children,
-            many=True,
-            context=self.context,
-        ).data
+        # Recursing with a nested serializer over obj.children.all() issued one
+        # query per node, and walking get_descendant_ids() costs one per level.
+        # Every descendant shares this node's home, so a single query over the
+        # home is enough to assemble the subtree in memory at any depth.
+        children_by_parent = {}
+        for node in LocationNode.objects.filter(home_id=obj.home_id).order_by(
+            "sort_order",
+            "name",
+            "id",
+        ):
+            children_by_parent.setdefault(node.parent_id, []).append(node)
+
+        return self._branches(obj.pk, children_by_parent)
+
+    def _branches(self, parent_pk, children_by_parent):
+        branches = []
+        for node in children_by_parent.get(parent_pk, []):
+            data = self._own_fields(node)
+            data["children"] = self._branches(node.pk, children_by_parent)
+            branches.append(data)
+        return branches
+
+    def _own_fields(self, node):
+        """Represent every declared field except `children`, without recursing."""
+        data = {}
+        for name, field in self.fields.items():
+            if name == "children":
+                continue
+            value = field.get_attribute(node)
+            data[name] = None if value is None else field.to_representation(value)
+        return data

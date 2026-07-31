@@ -16,6 +16,7 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = (permissions.AllowAny,)
     authentication_classes = ()
+    throttle_scope = "register"
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -30,6 +31,7 @@ class RegisterView(generics.CreateAPIView):
 class LoginView(views.APIView):
     permission_classes = (permissions.AllowAny,)
     authentication_classes = ()
+    throttle_scope = "login"
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data, context={"request": request})
@@ -61,6 +63,7 @@ class CsrfView(views.APIView):
 class PasswordResetRequestView(views.APIView):
     permission_classes = (permissions.AllowAny,)
     authentication_classes = ()
+    throttle_scope = "password_reset"
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
@@ -75,6 +78,7 @@ class PasswordResetRequestView(views.APIView):
 class PasswordResetConfirmView(views.APIView):
     permission_classes = (permissions.AllowAny,)
     authentication_classes = ()
+    throttle_scope = "password_reset"
 
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)

@@ -1,8 +1,21 @@
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
 from locations.models import LocationNode
+
+
+def item_photo_path(instance, filename):
+    """Store uploads under an unguessable name.
+
+    Nginx serves /media/ without authentication, so a path derived from the
+    original filename (items/passport.png) lets anyone who guesses it read
+    another user's photo.
+    """
+    return f"items/{uuid.uuid4().hex}{Path(filename).suffix.lower()}"
 
 
 class Category(models.Model):
@@ -78,7 +91,7 @@ class Item(models.Model):
         blank=True,
         null=True,
     )
-    photo = models.ImageField(upload_to="items/", blank=True, null=True)
+    photo = models.ImageField(upload_to=item_photo_path, blank=True, null=True)
     purchase_price = models.DecimalField(
         max_digits=12,
         decimal_places=2,

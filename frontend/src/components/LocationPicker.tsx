@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import type { TreeNode } from "../types/api";
@@ -19,10 +19,40 @@ export function LocationPicker({
   onToggle: (nodeId: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const selectedNode = findTreeNode(tree, selectedId);
 
+  // Without this the dropdown stayed open until something inside it was
+  // clicked, overlapping the rest of the form.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: globalThis.PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && containerRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
   return (
-    <div className="location-dropdown">
+    <div className="location-dropdown" ref={containerRef}>
       <button
         className="location-dropdown-trigger"
         type="button"

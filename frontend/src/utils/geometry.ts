@@ -19,44 +19,33 @@ export function isRectGeometry(value: unknown): value is RectGeometry {
   );
 }
 
-export function fallbackRect(index: number): RectGeometry {
+const FALLBACK_COLUMNS = 4;
+const FALLBACK_SLOTS = FALLBACK_COLUMNS * 6;
+
+/** Placeholder position for a rectangle that has no geometry stored yet. */
+export function fallbackRect(seed: number): RectGeometry {
+  const slot = ((Math.trunc(seed) % FALLBACK_SLOTS) + FALLBACK_SLOTS) % FALLBACK_SLOTS;
+
   return {
     type: "rect",
-    x: 40 + (index % 4) * 190,
-    y: 40 + Math.floor(index / 4) * 140,
+    x: 40 + (slot % FALLBACK_COLUMNS) * 190,
+    y: 40 + Math.floor(slot / FALLBACK_COLUMNS) * 140,
     width: 160,
     height: 96,
     rotation: 0
   };
 }
 
-export function rectForNode(
-  node: LocationNode,
-  index: number,
-  drafts: Record<number, RectGeometry>
-) {
+export function rectForNode(node: LocationNode, drafts: Record<number, RectGeometry>) {
   if (isRectGeometry(drafts[node.id])) {
     return drafts[node.id];
   }
   if (isRectGeometry(node.geometry_json)) {
     return node.geometry_json;
   }
-  return fallbackRect(index);
-}
-
-export function clampRect(rect: RectGeometry, maxWidth: number, maxHeight: number): RectGeometry {
-  const width = Math.max(36, Math.min(rect.width, maxWidth));
-  const height = Math.max(28, Math.min(rect.height, maxHeight));
-  const x = Math.max(0, Math.min(rect.x, maxWidth - width));
-  const y = Math.max(0, Math.min(rect.y, maxHeight - height));
-
-  return {
-    ...rect,
-    x,
-    y,
-    width,
-    height
-  };
+  // Seeded by id, not by list position, so a node without geometry keeps its
+  // placeholder spot when other nodes are added or removed around it.
+  return fallbackRect(node.id);
 }
 
 export function normalizeRect(rect: RectGeometry): RectGeometry {

@@ -4,6 +4,7 @@ from smtplib import SMTPException
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, password_validation
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.utils import timezone
 from rest_framework import serializers
@@ -40,6 +41,21 @@ class RegisterSerializer(serializers.ModelSerializer):
         if value and User.objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError("A user with this username already exists.")
         return value
+
+    def validate(self, attrs):
+        # AUTH_PASSWORD_VALIDATORS was only being applied on password reset, so
+        # a password rejected there could still be used to sign up. Run the same
+        # checks here, against an unsaved user so the similarity validator works.
+        candidate = User(
+            username=attrs.get("username") or "",
+            email=attrs.get("email", ""),
+            nickname=attrs.get("nickname", ""),
+        )
+        try:
+            password_validation.validate_password(attrs["password"], candidate)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"password": list(exc.messages)}) from exc
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password")

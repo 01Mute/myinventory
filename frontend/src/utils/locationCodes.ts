@@ -11,22 +11,6 @@ const typePrefixes: Record<LocationNodeType, string> = {
   CUSTOM: "X"
 };
 
-export function inferChildNodeType(parent: LocationNode | null): LocationNodeType {
-  if (!parent) {
-    return "ROOM";
-  }
-
-  if (parent.node_type === "ROOM") {
-    return "FURNITURE";
-  }
-
-  if (parent.node_type === "FURNITURE") {
-    return "COMPARTMENT";
-  }
-
-  return "CUSTOM";
-}
-
 export function nextLocationCode(
   nodes: LocationNode[],
   parentId: number | null,

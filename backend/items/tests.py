@@ -52,8 +52,49 @@ class ItemApiTests(APITestCase):
         response = self.client.get(url, {"location_code": "LIVING-A"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Passport")
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["name"], "Passport")
+
+    def test_list_is_paginated(self):
+        response = self.client.get(reverse("item-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for key in ("count", "next", "previous", "results"):
+            self.assertIn(key, response.data)
+
+    def test_detail_route_ignores_list_filters(self):
+        """get_queryset() used to filter detail lookups too, so a stray query
+        parameter on a detail URL answered 404 instead of the item."""
+        url = reverse("item-detail", args=[self.item.id])
+        response = self.client.get(url, {"q": "no-such-item"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Passport")
+
+    def test_listing_does_not_touch_last_checked(self):
+        self.client.get(reverse("item-list"), {"q": "Passport", "touch_last_checked": "true"})
+
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.last_checked_at)
+
+    def test_touch_searched_updates_only_matching_items(self):
+        other = Item.objects.create(owner=self.user, name="Umbrella")
+
+        response = self.client.post(f"{reverse('item-touch-searched')}?q=Passport")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["name"] for row in response.data], ["Passport"])
+        self.item.refresh_from_db()
+        other.refresh_from_db()
+        self.assertIsNotNone(self.item.last_checked_at)
+        self.assertIsNone(other.last_checked_at)
+
+    def test_touch_searched_requires_a_search_term(self):
+        response = self.client.post(reverse("item-touch-searched"))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.last_checked_at)
 
     def test_moves_item_and_creates_history(self):
         url = reverse("item-move", args=[self.item.id])

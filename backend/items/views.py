@@ -1,4 +1,5 @@
 import csv
+import os
 from pathlib import Path
 
 from django.db import transaction
@@ -25,15 +26,12 @@ def as_bool(value):
     return str(value).lower() in {"1", "true", "yes", "on"}
 
 
-def should_touch_last_checked(params):
-    return bool(params.get("q")) and as_bool(params.get("touch_last_checked"))
-
-
 def previous_location_id(location):
     return location.id if location else None
 
 
 ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+MAX_PHOTO_BYTES = int(os.getenv("MAX_PHOTO_BYTES", str(10 * 1024 * 1024)))
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -59,32 +57,24 @@ class TagViewSet(viewsets.ModelViewSet):
 class ItemViewSet(viewsets.ModelViewSet):
     serializer_class = ItemSerializer
 
-    def get_queryset(self):
-        qs = (
+    # Query-parameter filters describe a collection, not a single row. Applying
+    # them in get_queryset() also narrowed the detail routes, so a request like
+    # GET /api/items/5/?q=zzz answered 404.
+    filtered_actions = ("list", "export_csv", "touch_searched")
+
+    def base_queryset(self):
+        return (
             Item.objects.filter(owner=self.request.user)
             .select_related("category", "current_location_node")
             .prefetch_related("tags")
             .order_by("name", "id")
         )
-        return self.apply_filters(qs)
 
-    def list(self, request, *args, **kwargs):
-        qs = self.filter_queryset(self.get_queryset())
-        if should_touch_last_checked(request.query_params):
-            item_ids = list(qs.values_list("id", flat=True))
-            if item_ids:
-                Item.objects.filter(owner=request.user, id__in=item_ids).update(
-                    last_checked_at=timezone.now(),
-                )
-                qs = (
-                    Item.objects.filter(owner=request.user, id__in=item_ids)
-                    .select_related("category", "current_location_node")
-                    .prefetch_related("tags")
-                    .order_by("name", "id")
-                )
-
-        serializer = self.get_serializer(qs, many=True)
-        return response.Response(serializer.data)
+    def get_queryset(self):
+        qs = self.base_queryset()
+        if self.action in self.filtered_actions:
+            qs = self.apply_filters(qs)
+        return qs
 
     def perform_update(self, serializer):
         previous_location = serializer.instance.current_location_node
@@ -207,6 +197,11 @@ class ItemViewSet(viewsets.ModelViewSet):
                 {"photo": "JPG, PNG, GIF, WEBP 사진 파일만 업로드할 수 있습니다."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if uploaded.size > MAX_PHOTO_BYTES:
+            return response.Response(
+                {"photo": f"사진 파일은 {MAX_PHOTO_BYTES // (1024 * 1024)}MB 이하만 업로드할 수 있습니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             Image.open(uploaded).verify()
             uploaded.seek(0)
@@ -216,12 +211,47 @@ class ItemViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Assigning over item.photo orphans the previous file, so the media
+        # directory grew on every re-upload. Drop it once the new one is stored.
+        previous_photo = item.photo if item.photo else None
         item.photo = uploaded
         item.save(update_fields=["photo", "updated_at"])
+        if previous_photo and previous_photo.name != item.photo.name:
+            previous_photo.storage.delete(previous_photo.name)
         return response.Response(
             ItemSerializer(item, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="touch-searched",
+        url_name="touch-searched",
+    )
+    def touch_searched(self, request):
+        """Mark everything matching the current search as just checked.
+
+        This used to happen inside GET /api/items/?touch_last_checked=true. A
+        read that mutates rows is unsafe to cache, prefetch or retry, so the
+        write lives on its own POST route and the filters come along as query
+        parameters exactly as they do for the list route.
+        """
+        if not request.query_params.get("q"):
+            return response.Response(
+                {"q": "검색어가 있어야 마지막 검색일자를 갱신할 수 있습니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        item_ids = list(self.filter_queryset(self.get_queryset()).values_list("id", flat=True))
+        if not item_ids:
+            return response.Response([], status=status.HTTP_200_OK)
+
+        Item.objects.filter(owner=request.user, id__in=item_ids).update(
+            last_checked_at=timezone.now(),
+        )
+        touched = self.base_queryset().filter(id__in=item_ids)
+        return response.Response(self.get_serializer(touched, many=True).data)
 
     @action(detail=True, methods=["post"], url_path="touch-last-checked")
     def touch_last_checked(self, request, pk=None):
