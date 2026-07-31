@@ -33,8 +33,12 @@ else
   EMAIL_ARG="--register-unsafely-without-email"
 fi
 
+# --no-deps on every one-off run below: the certbot service depends_on nginx for
+# normal operation, but compose would then try to start nginx first — which is
+# exactly what cannot happen yet on a first issuance, because the certificate
+# nginx is configured to load does not exist until these commands have run.
 echo "==> Placing a temporary self-signed certificate so nginx can start"
-$COMPOSE run --rm --entrypoint /bin/sh certbot -c "
+$COMPOSE run --rm --no-deps --entrypoint /bin/sh certbot -c "
   set -e
   if [ ! -f $LIVE/fullchain.pem ]; then
     command -v openssl >/dev/null 2>&1 || apk add --no-cache openssl >/dev/null 2>&1
@@ -51,9 +55,9 @@ sleep 5
 # nginx has the placeholder open already, so removing it now costs nothing and
 # keeps certbot from treating the hand-made directory as one of its lineages.
 echo "==> Removing the placeholder and requesting the real certificate"
-$COMPOSE run --rm --entrypoint /bin/sh certbot -c "rm -rf $LIVE /etc/letsencrypt/archive/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf"
+$COMPOSE run --rm --no-deps --entrypoint /bin/sh certbot -c "rm -rf $LIVE /etc/letsencrypt/archive/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf"
 
-$COMPOSE run --rm --entrypoint certbot certbot certonly \
+$COMPOSE run --rm --no-deps --entrypoint certbot certbot certonly \
   --webroot -w /var/www/certbot \
   -d "$DOMAIN" \
   $EMAIL_ARG \
@@ -64,4 +68,4 @@ $COMPOSE up -d
 $COMPOSE exec nginx nginx -s reload
 
 echo "==> Done. Certificate:"
-$COMPOSE run --rm --entrypoint certbot certbot certificates
+$COMPOSE run --rm --no-deps --entrypoint certbot certbot certificates
