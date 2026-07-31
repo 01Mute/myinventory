@@ -1,5 +1,5 @@
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 
 from homes.models import FloorPlan, Home
@@ -49,15 +49,31 @@ class LocationNode(models.Model):
 
     class Meta:
         ordering = ["home_id", "floor_plan_id", "path", "sort_order", "id"]
+        # Postgres treats NULL as distinct from every other NULL, so a single
+        # constraint over the nullable floor_plan/parent columns is not enforced
+        # for root nodes or nodes with no floor plan. Cover each NULL
+        # combination with its own partial index so concurrent requests cannot
+        # slip a duplicate past the application-level checks.
         constraints = [
             models.UniqueConstraint(
                 fields=["home", "floor_plan", "parent", "code"],
+                condition=Q(floor_plan__isnull=False) & Q(parent__isnull=False),
                 name="unique_location_code_per_parent",
             ),
             models.UniqueConstraint(
+                fields=["home", "parent", "code"],
+                condition=Q(floor_plan__isnull=True) & Q(parent__isnull=False),
+                name="unique_location_code_per_parent_no_plan",
+            ),
+            models.UniqueConstraint(
                 fields=["home", "floor_plan", "code"],
-                condition=Q(parent__isnull=True),
+                condition=Q(floor_plan__isnull=False) & Q(parent__isnull=True),
                 name="unique_root_location_code",
+            ),
+            models.UniqueConstraint(
+                fields=["home", "code"],
+                condition=Q(floor_plan__isnull=True) & Q(parent__isnull=True),
+                name="unique_root_location_code_no_plan",
             ),
         ]
 
@@ -95,7 +111,56 @@ class LocationNode(models.Model):
     def save(self, *args, **kwargs):
         self._set_hierarchy_fields()
         self.full_clean()
-        super().save(*args, **kwargs)
+        previous = (
+            LocationNode.objects.filter(pk=self.pk)
+            .values("code", "name", "parent_id", "floor_plan_id")
+            .first()
+            if self.pk
+            else None
+        )
+        needs_resync = previous is not None and (
+            previous["code"] != self.code
+            or previous["name"] != self.name
+            or previous["parent_id"] != self.parent_id
+            or previous["floor_plan_id"] != self.floor_plan_id
+        )
+
+        # The row and its descendants have to move together; a half-applied
+        # rename would leave the tree describing two different hierarchies.
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            if needs_resync:
+                self.resync_descendants()
+
+    def resync_descendants(self):
+        """Recompute full_code/path/level for every node below this one.
+
+        These three fields cache the parent chain as denormalised strings, so a
+        rename or a re-parent leaves every descendant pointing at the old value.
+        Item.location_code / location_path and the ?q= / ?location_code=
+        searches all read them, so stale rows show and match the wrong things.
+        """
+        frontier = [self]
+
+        while frontier:
+            children = list(
+                LocationNode.objects.filter(
+                    parent_id__in=[node.pk for node in frontier],
+                ),
+            )
+            if not children:
+                return
+
+            by_parent_id = {node.pk: node for node in frontier}
+            for child in children:
+                child.parent = by_parent_id[child.parent_id]
+                child._set_hierarchy_fields()
+
+            LocationNode.objects.bulk_update(
+                children,
+                ["home", "floor_plan", "full_code", "path", "level"],
+            )
+            frontier = children
 
     def _set_hierarchy_fields(self):
         if self.parent_id:

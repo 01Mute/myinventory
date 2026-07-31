@@ -71,6 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const loggedInUser = await api.post<User>("/auth/login/", payload);
           setUser(loggedInUser);
         } catch (error) {
+          // A TypeError from fetch means the response never arrived (network
+          // drop, CORS), which does not tell us whether the server created the
+          // session. Ask /auth/me/ before reporting a failure; if that also
+          // fails the error propagates and the user sees the real problem.
           if (!(error instanceof TypeError)) {
             throw error;
           }

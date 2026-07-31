@@ -1,5 +1,13 @@
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.db import models
+
+
+def floor_plan_background_path(instance, filename):
+    """Unguessable path, for the same reason as items.models.item_photo_path."""
+    return f"floor-plans/{uuid.uuid4().hex}{Path(filename).suffix.lower()}"
 
 
 class Home(models.Model):
@@ -42,7 +50,7 @@ class FloorPlan(models.Model):
     height = models.PositiveIntegerField(default=700)
     unit = models.CharField(max_length=8, choices=Unit.choices, default=Unit.PIXEL)
     background_image = models.ImageField(
-        upload_to="floor-plans/",
+        upload_to=floor_plan_background_path,
         blank=True,
         null=True,
     )

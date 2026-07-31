@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent, WheelEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Armchair,
@@ -154,8 +154,7 @@ function buildCanvasViewBox(
   let maxY = baseHeight;
 
   drawableLocations.forEach((node) => {
-    const index = floorLocations.findIndex((location) => location.id === node.id);
-    const rect = rectForNode(node, index >= 0 ? index : 0, geometryDrafts);
+    const rect = rectForNode(node, geometryDrafts);
     const rectRight = rect.x + rect.width;
     const rectBottom = rect.y + rect.height;
 
@@ -199,19 +198,20 @@ export function FloorPlanEditorPage() {
   const { floorPlanId } = useParams();
   const queryClient = useQueryClient();
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
   const geometryDraftsRef = useRef<Record<number, RectGeometry>>({});
   const keyboardSaveTimerRef = useRef<number | null>(null);
 
-  const homesQuery = useQuery({ queryKey: ["homes"], queryFn: () => api.get<Home[]>("/homes/") });
+  const homesQuery = useQuery({ queryKey: ["homes"], queryFn: () => api.getAll<Home>("/homes/") });
   const floorPlansQuery = useQuery({
     queryKey: ["floor-plans"],
-    queryFn: () => api.get<FloorPlan[]>("/floor-plans/")
+    queryFn: () => api.getAll<FloorPlan>("/floor-plans/")
   });
   const locationsQuery = useQuery({
     queryKey: ["location-nodes"],
-    queryFn: () => api.get<LocationNode[]>("/location-nodes/")
+    queryFn: () => api.getAll<LocationNode>("/location-nodes/")
   });
 
   const homes = homesQuery.data ?? [];
@@ -334,15 +334,12 @@ export function FloorPlanEditorPage() {
   const flatTree = useMemo(() => flattenLocationTree(tree), [tree]);
   const selectedNode = floorLocations.find((node) => node.id === selectedNodeId) ?? null;
   const selectedNodeLocked = isNodeLocked(selectedNode);
-  const selectedNodeIndex = selectedNode
-    ? floorLocations.findIndex((node) => node.id === selectedNode.id)
-    : -1;
   const selectedRect = useMemo(
     () =>
-      selectedNode && selectedNodeIndex >= 0 && isDrawableType(selectedNode.node_type)
-        ? rectForNode(selectedNode, selectedNodeIndex, geometryDrafts)
+      selectedNode && isDrawableType(selectedNode.node_type)
+        ? rectForNode(selectedNode, geometryDrafts)
         : null,
-    [geometryDrafts, selectedNode, selectedNodeIndex]
+    [geometryDrafts, selectedNode]
   );
   const selectedNodeChildren = useMemo(
     () => floorLocations.filter((node) => node.parent === selectedNodeId),
@@ -368,7 +365,7 @@ export function FloorPlanEditorPage() {
 
   const selectedItemsQuery = useQuery({
     queryKey: ["items", "location", selectedNodeId],
-    queryFn: () => api.get<Item[]>(`/items/?location_node_id=${selectedNodeId}&include_children=true`),
+    queryFn: () => api.getAll<Item>(`/items/?location_node_id=${selectedNodeId}&include_children=true`),
     enabled: Boolean(selectedNodeId)
   });
 
@@ -499,18 +496,44 @@ export function FloorPlanEditorPage() {
         return;
       }
       event.preventDefault();
-      confirmDeleteNode(selectedNode);
+      void confirmDeleteNode(selectedNode);
     }
 
     window.addEventListener("keydown", handleDeleteKey);
     return () => window.removeEventListener("keydown", handleDeleteKey);
   }, [deleteLocationNode.isPending, floorLocations, flatTree, selectedNode]);
 
+  // React registers onWheel as a *passive* listener on the root container, so
+  // preventDefault() inside a React handler is silently ignored and the page
+  // scrolls away underneath the zoom. Register on the element to opt out.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    function handleWheel(event: globalThis.WheelEvent) {
+      event.preventDefault();
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const nextZoom = Math.min(
+        3,
+        Math.max(0.35, Number((stageZoom + direction * 0.12).toFixed(2)))
+      );
+      if (nextZoom === stageZoom) {
+        return;
+      }
+      setStageZoom(nextZoom);
+      rememberViewport(nextZoom, stagePan);
+    }
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", handleWheel);
+  }, [selectedFloorPlanId, stagePan, stageZoom]);
+
   useEffect(() => {
     function handleArrowKey(event: KeyboardEvent) {
       if (
         !selectedNode ||
-        selectedNodeIndex < 0 ||
         !isDrawableType(selectedNode.node_type) ||
         isNodeLocked(selectedNode) ||
         isTypingTarget(event.target)
@@ -531,7 +554,7 @@ export function FloorPlanEditorPage() {
 
       event.preventDefault();
       const amount = event.shiftKey ? 10 : 1;
-      const currentRect = rectForNode(selectedNode, selectedNodeIndex, geometryDraftsRef.current);
+      const currentRect = rectForNode(selectedNode, geometryDraftsRef.current);
       const nextRect = constrainRect(
         {
           ...currentRect,
@@ -546,7 +569,7 @@ export function FloorPlanEditorPage() {
 
     window.addEventListener("keydown", handleArrowKey);
     return () => window.removeEventListener("keydown", handleArrowKey);
-  }, [selectedNode, selectedNodeIndex]);
+  }, [selectedNode]);
 
   function createRectangle() {
     if (selectedFloorPlan) {
@@ -666,11 +689,14 @@ export function FloorPlanEditorPage() {
     });
   }
 
-  function deleteNode(node: LocationNode, nextSelectedId?: number | null) {
+  function deleteNode(
+    node: LocationNode,
+    nextSelectedId: number | null | undefined,
+    deletedIds: number[]
+  ) {
     if (deleteLocationNode.isPending) {
       return;
     }
-    const deletedIds = getNodeAndDescendantIds(node.id);
     deleteLocationNode.mutate({
       id: node.id,
       deletedIds,
@@ -678,20 +704,52 @@ export function FloorPlanEditorPage() {
     });
   }
 
-  function confirmDeleteNode(node: LocationNode, nextSelectedId?: number | null) {
-    if (
-      node.node_type === "COMPARTMENT" &&
-      !window.confirm(`정말 "${node.name}" 칸을 삭제하시겠습니까?`)
-    ) {
+  // Deleting a node cascades to its whole subtree, and every item stored in it
+  // is silently detached (Item.current_location_node is SET_NULL). Spell that
+  // out before asking, for every node type and for the Delete key too.
+  async function countItemsUnderNode(nodeId: number) {
+    try {
+      const nodeItems = await queryClient.fetchQuery({
+        queryKey: ["items", "location", nodeId],
+        queryFn: () =>
+          api.getAll<Item>(`/items/?location_node_id=${nodeId}&include_children=true`)
+      });
+      return nodeItems.length;
+    } catch {
+      return null;
+    }
+  }
+
+  async function confirmDeleteNode(node: LocationNode, nextSelectedId?: number | null) {
+    if (deleteLocationNode.isPending) {
       return;
     }
 
-    deleteNode(node, nextSelectedId);
+    const deletedIds = getNodeAndDescendantIds(node.id);
+    const descendantCount = deletedIds.length - 1;
+    const itemCount = await countItemsUnderNode(node.id);
+
+    const message = [`정말 "${node.name}"을(를) 삭제하시겠습니까?`];
+    if (descendantCount > 0) {
+      message.push(`하위 위치 ${descendantCount}개가 함께 삭제됩니다.`);
+    }
+    if (itemCount === null) {
+      message.push("이 위치에 있는 물건 수를 확인하지 못했습니다.");
+    } else if (itemCount > 0) {
+      message.push(`물건 ${itemCount}개의 위치가 "미지정"으로 바뀝니다.`);
+    }
+    message.push("", "이 작업은 되돌릴 수 없습니다.");
+
+    if (!window.confirm(message.join("\n"))) {
+      return;
+    }
+
+    deleteNode(node, nextSelectedId, deletedIds);
   }
 
   function deleteSelectedNode() {
     if (selectedNode) {
-      confirmDeleteNode(selectedNode);
+      void confirmDeleteNode(selectedNode);
     }
   }
 
@@ -815,11 +873,11 @@ export function FloorPlanEditorPage() {
     excludeNodeId?: number,
     drafts: Record<number, RectGeometry> = geometryDrafts
   ) {
-    const containingRoom = floorLocations.find((node, index) => {
+    const containingRoom = floorLocations.find((node) => {
       if (node.id === excludeNodeId || node.node_type !== "ROOM") {
         return false;
       }
-      return rectContains(rectForNode(node, index, drafts), rect);
+      return rectContains(rectForNode(node, drafts), rect);
     });
 
     return containingRoom?.id ?? null;
@@ -917,25 +975,11 @@ export function FloorPlanEditorPage() {
           isDrawableType(node.node_type) &&
           node.node_type === activeNode?.node_type
       )
-      .map((node) => {
-        const index = floorLocations.findIndex((location) => location.id === node.id);
-        return rectForNode(node, index, currentDrafts);
-      });
+      .map((node) => rectForNode(node, currentDrafts));
     const snapped = snapRect(next, snapTargets, selectedFloorPlan.width, selectedFloorPlan.height);
     const normalized = constrainRect(snapped, activeNode?.node_type ?? "ROOM");
     dragRef.current = { ...active, latest: normalized };
     applyGeometryDraft(active.nodeId, normalized);
-  }
-
-  function handleCanvasWheel(event: WheelEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const direction = event.deltaY < 0 ? 1 : -1;
-    setStageZoom((current) => {
-      const next = current + direction * 0.12;
-      const nextZoom = Math.min(3, Math.max(0.35, Number(next.toFixed(2))));
-      rememberViewport(nextZoom, stagePan);
-      return nextZoom;
-    });
   }
 
   function startCanvasPan(event: PointerEvent<SVGElement>) {
@@ -1143,7 +1187,7 @@ export function FloorPlanEditorPage() {
           {!selectedFloorPlan ? (
             <EmptyState title="선택된 도면이 없습니다." />
           ) : (
-            <div className="floor-canvas" onWheel={handleCanvasWheel}>
+            <div className="floor-canvas" ref={canvasRef}>
               <svg
                 ref={svgRef}
                 className="drawing-surface"
@@ -1168,8 +1212,7 @@ export function FloorPlanEditorPage() {
                   onPointerDown={startCanvasPan}
                 />
                 {sortedDrawableLocations.map((node) => {
-                  const index = floorLocations.findIndex((location) => location.id === node.id);
-                  const rect = rectForNode(node, index >= 0 ? index : 0, geometryDrafts);
+                  const rect = rectForNode(node, geometryDrafts);
                   const colors = palette[node.node_type];
                   const selected = node.id === selectedNodeId;
                   const locked = isNodeLocked(node);
@@ -1211,15 +1254,25 @@ export function FloorPlanEditorPage() {
                         {node.full_code}
                       </text>
                       {selected && !locked ? (
-                        <rect
+                        <g
                           className="resize-handle"
-                          x={rect.x + rect.width - 18}
-                          y={rect.y + rect.height - 18}
-                          width="18"
-                          height="18"
-                          rx="4"
+                          style={{ "--handle-color": colors.stroke } as CSSProperties}
                           onPointerDown={(event) => startPointer(event, node, rect, "resize")}
-                        />
+                        >
+                          <circle
+                            className="resize-handle-hit"
+                            cx={rect.x + rect.width - 11}
+                            cy={rect.y + rect.height - 11}
+                            r="14"
+                          />
+                          <circle
+                            className="resize-handle-dot"
+                            cx={rect.x + rect.width - 11}
+                            cy={rect.y + rect.height - 11}
+                            r="7"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        </g>
                       ) : null}
                     </g>
                   );
@@ -1349,7 +1402,7 @@ export function FloorPlanEditorPage() {
                             title={`${node.name} 삭제`}
                             aria-label={`${node.name} 삭제`}
                             disabled={deleteLocationNode.isPending}
-                            onClick={() => confirmDeleteNode(node, selectedNode.id)}
+                            onClick={() => void confirmDeleteNode(node, selectedNode.id)}
                           >
                             <Trash2 aria-hidden="true" />
                           </button>

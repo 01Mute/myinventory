@@ -55,7 +55,45 @@ async function ensureCsrf() {
   return csrfPromise;
 }
 
+type Paginated<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};
+
+function isPaginated<T>(value: unknown): value is Paginated<T> {
+  return Boolean(value) && typeof value === "object" && Array.isArray((value as Paginated<T>).results);
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return requestUrl<T>(`${API_BASE_URL}${path}`, options);
+}
+
+/**
+ * Collect every page of a paginated list route into a single array.
+ *
+ * The UI builds location trees and pickers from complete lists, so it needs all
+ * the rows; pagination exists to bound each individual response. Also accepts a
+ * bare array so an unpaginated route keeps working.
+ */
+async function getAll<T>(path: string, options: RequestOptions = {}): Promise<T[]> {
+  let payload = await request<Paginated<T> | T[]>(path, options);
+  const collected: T[] = [];
+
+  for (;;) {
+    if (!isPaginated<T>(payload)) {
+      return collected.concat(payload ?? []);
+    }
+    collected.push(...payload.results);
+    if (!payload.next) {
+      return collected;
+    }
+    payload = await requestUrl<Paginated<T>>(payload.next, options);
+  }
+}
+
+async function requestUrl<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const unsafe = !["GET", "HEAD", "OPTIONS"].includes(method);
 
@@ -79,7 +117,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers.set("X-CSRFToken", csrfToken);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(url, {
     ...options,
     method,
     credentials: "include",
@@ -122,6 +160,7 @@ async function download(path: string): Promise<Blob> {
 export const api = {
   ensureCsrf,
   get: <T>(path: string) => request<T>(path),
+  getAll,
   post: <T>(path: string, body?: RequestBody) =>
     request<T>(path, { method: "POST", body }),
   patch: <T>(path: string, body?: RequestBody) =>

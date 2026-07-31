@@ -8,16 +8,17 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { LocationPicker } from "../components/LocationPicker";
 import type { FloorPlan, Home, Item, LocationNode } from "../types/api";
 import { buildLocationTree } from "../utils/tree";
+import { toggleSetValue } from "../utils/sets";
 
 export function LocationsPage() {
-  const homesQuery = useQuery({ queryKey: ["homes"], queryFn: () => api.get<Home[]>("/homes/") });
+  const homesQuery = useQuery({ queryKey: ["homes"], queryFn: () => api.getAll<Home>("/homes/") });
   const floorPlansQuery = useQuery({
     queryKey: ["floor-plans"],
-    queryFn: () => api.get<FloorPlan[]>("/floor-plans/")
+    queryFn: () => api.getAll<FloorPlan>("/floor-plans/")
   });
   const locationsQuery = useQuery({
     queryKey: ["location-nodes"],
-    queryFn: () => api.get<LocationNode[]>("/location-nodes/")
+    queryFn: () => api.getAll<LocationNode>("/location-nodes/")
   });
 
   const homes = homesQuery.data ?? [];
@@ -61,7 +62,7 @@ export function LocationsPage() {
   const itemsQuery = useQuery({
     queryKey: ["items", "location-page", selectedLocationId],
     queryFn: () =>
-      api.get<Item[]>(`/items/?location_node_id=${selectedLocationId}&include_children=true`),
+      api.getAll<Item>(`/items/?location_node_id=${selectedLocationId}&include_children=true`),
     enabled: Boolean(selectedLocationId)
   });
 
@@ -165,14 +166,4 @@ export function LocationsPage() {
       </div>
     </section>
   );
-}
-
-function toggleSetValue(values: Set<number>, value: number) {
-  const next = new Set(values);
-  if (next.has(value)) {
-    next.delete(value);
-  } else {
-    next.add(value);
-  }
-  return next;
 }

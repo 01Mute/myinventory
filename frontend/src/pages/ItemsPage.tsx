@@ -15,9 +15,16 @@ import type {
   Tag
 } from "../types/api";
 import { buildLocationTree } from "../utils/tree";
+import { toggleSetValue } from "../utils/sets";
 
 const NEW_CATEGORY_VALUE = "__new_category__";
 const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+
+const statusLabels: [Item["status"], string][] = [
+  ["ACTIVE", "보관 중"],
+  ["MISSING", "분실"],
+  ["ARCHIVED", "보관 종료"]
+];
 
 type PanelMode = "create" | "edit" | null;
 
@@ -29,6 +36,7 @@ type ItemFormState = {
   quantity: string;
   current_location_node: string;
   purchase_date: string;
+  purchase_price: string;
   status: Item["status"];
   tagText: string;
 };
@@ -41,6 +49,7 @@ const emptyItemForm: ItemFormState = {
   quantity: "1",
   current_location_node: "",
   purchase_date: "",
+  purchase_price: "",
   status: "ACTIVE",
   tagText: ""
 };
@@ -101,7 +110,6 @@ export function ItemsPage() {
 
     const params = new URLSearchParams();
     params.set("q", q);
-    params.set("touch_last_checked", "true");
     if (filters.category) {
       params.set("category", filters.category);
     }
@@ -116,21 +124,25 @@ export function ItemsPage() {
   }, [debouncedSearchText, filters.category, filters.location_node_id, filters.tag]);
 
   const itemsQuery = useQuery({
-    queryKey: ["items", searchParams],
-    queryFn: () => api.get<Item[]>(`/items/${searchParams ? `?${searchParams}` : ""}`)
+    queryKey: ["items", "list", searchParams],
+    queryFn: () => api.getAll<Item>(`/items/${searchParams ? `?${searchParams}` : ""}`)
   });
+  // The duplicate-name check and the selected-item lookup need the unfiltered
+  // list. Keying it as the empty-filter list means that when no filter is
+  // active this is literally the same query, instead of a second identical
+  // request on every mount.
   const allItemsQuery = useQuery({
-    queryKey: ["items", "all"],
-    queryFn: () => api.get<Item[]>("/items/")
+    queryKey: ["items", "list", ""],
+    queryFn: () => api.getAll<Item>("/items/")
   });
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
-    queryFn: () => api.get<Category[]>("/categories/")
+    queryFn: () => api.getAll<Category>("/categories/")
   });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => api.get<Tag[]>("/tags/") });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => api.getAll<Tag>("/tags/") });
   const locationsQuery = useQuery({
     queryKey: ["location-nodes"],
-    queryFn: () => api.get<LocationNode[]>("/location-nodes/")
+    queryFn: () => api.getAll<LocationNode>("/location-nodes/")
   });
 
   const items = itemsQuery.data ?? [];
@@ -155,7 +167,7 @@ export function ItemsPage() {
 
   const historyQuery = useQuery({
     queryKey: ["item-history", selectedItemId],
-    queryFn: () => api.get<ItemLocationHistory[]>(`/items/${selectedItemId ?? 0}/history/`),
+    queryFn: () => api.getAll<ItemLocationHistory>(`/items/${selectedItemId ?? 0}/history/`),
     enabled: panelMode === "edit" && Boolean(selectedItemId)
   });
 
@@ -185,7 +197,7 @@ export function ItemsPage() {
 
     let cancelled = false;
     api
-      .get<Item[]>(`/items/?${touchSearchParams}`)
+      .post<Item[]>(`/items/touch-searched/?${touchSearchParams}`)
       .then((touchedItems) => {
         if (!cancelled && debouncedSearchText === filters.q.trim()) {
           queryClient.setQueriesData<Item[]>({ queryKey: ["items"] }, (current) =>
@@ -239,6 +251,7 @@ export function ItemsPage() {
           ? Number(itemForm.current_location_node)
           : null,
         purchase_date: itemForm.purchase_date || null,
+        purchase_price: itemForm.purchase_price.trim() || null,
         status: itemForm.status,
         tag_ids: tagIds
       };
@@ -259,10 +272,10 @@ export function ItemsPage() {
       return savedItem;
     },
     onSuccess: (savedItem) => {
-      queryClient.setQueryData<Item[]>(["items", searchParams], (current) =>
+      queryClient.setQueryData<Item[]>(["items", "list", searchParams], (current) =>
         upsertItem(current, savedItem)
       );
-      queryClient.setQueryData<Item[]>(["items", "all"], (current) =>
+      queryClient.setQueryData<Item[]>(["items", "list", ""], (current) =>
         upsertItem(current, savedItem)
       );
       queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -376,6 +389,12 @@ export function ItemsPage() {
   }
 
   function openCreatePanel() {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("수정사항이 있습니다. 저장하지 않고 새 물건을 등록하시겠습니까?")
+    ) {
+      return;
+    }
     const nextForm = createItemFormDefaults();
     setPanelMode("create");
     setSelectedItemId(null);
@@ -410,6 +429,14 @@ export function ItemsPage() {
     setPhotoFile(null);
   }
 
+  /**
+   * Closing with unsaved edits offers three outcomes, not two.
+   *
+   * This previously asked "저장하시겠습니까?" and treated Cancel as "throw the
+   * edits away", with no way to stay in the panel. Since any stray mousedown
+   * outside the panel routes here, one misclick plus a reflex Cancel destroyed
+   * the work. Now Cancel keeps the panel open and discarding is explicit.
+   */
   async function requestClosePanel() {
     if (!panelMode || saveItem.isPending) {
       return;
@@ -419,8 +446,10 @@ export function ItemsPage() {
       return;
     }
 
-    if (!window.confirm("수정사항이 있습니다. 저장하시겠습니까?")) {
-      closePanel();
+    if (!window.confirm("수정사항이 있습니다. 저장하고 닫으시겠습니까?\n\n취소를 누르면 계속 편집합니다.")) {
+      if (window.confirm("편집한 내용을 저장하지 않고 버리시겠습니까?")) {
+        closePanel();
+      }
       return;
     }
 
@@ -746,6 +775,35 @@ export function ItemsPage() {
                   />
                 </label>
               </div>
+              <div className="inline-fields">
+                <label>
+                  구매가격
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={itemForm.purchase_price}
+                    onChange={(event) =>
+                      setItemForm({ ...itemForm, purchase_price: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  상태
+                  <select
+                    value={itemForm.status}
+                    onChange={(event) =>
+                      setItemForm({ ...itemForm, status: event.target.value as Item["status"] })
+                    }
+                  >
+                    {statusLabels.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <label>
                 태그
                 <input
@@ -863,6 +921,7 @@ function formFromItem(item: Item): ItemFormState {
     quantity: String(item.quantity),
     current_location_node: item.current_location_node ? String(item.current_location_node) : "",
     purchase_date: item.purchase_date ?? "",
+    purchase_price: item.purchase_price ?? "",
     status: item.status,
     tagText: item.tags.map((tag) => `#${tag.name}`).join(" ")
   };
@@ -918,16 +977,6 @@ function isPanelSafeTarget(target: HTMLElement) {
       ].join(",")
     )
   );
-}
-
-function toggleSetValue(values: Set<number>, value: number) {
-  const next = new Set(values);
-  if (next.has(value)) {
-    next.delete(value);
-  } else {
-    next.add(value);
-  }
-  return next;
 }
 
 function addAncestorIds(values: Set<number>, locationId: number, locations: LocationNode[]) {

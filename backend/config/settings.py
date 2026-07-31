@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from django.core.exceptions import ImproperlyConfigured
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -47,8 +49,18 @@ def database_config():
     }
 
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key")
-DEBUG = env_bool("DJANGO_DEBUG", True)
+# Default to the safe value: a deployment that forgets DJANGO_DEBUG must not
+# silently serve tracebacks and a publicly known secret key.
+DEBUG = env_bool("DJANGO_DEBUG", False)
+
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false.",
+        )
+    SECRET_KEY = "dev-only-secret-key"
+
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0")
 
 INSTALLED_APPS = [
@@ -167,4 +179,28 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # Without this every list route returned the caller's entire table in one
+    # response. The client walks `next` to rebuild the full list, so behaviour is
+    # unchanged while any single response stays bounded.
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": int(os.getenv("PAGE_SIZE", "200")),
+    # ScopedRateThrottle only applies to views that declare a throttle_scope,
+    # so this leaves the regular CRUD endpoints untouched and guards the
+    # unauthenticated auth endpoints (credential stuffing, reset-mail flooding).
+    #
+    # NOTE: the default LocMemCache is per-process, so with N gunicorn workers
+    # the effective ceiling is N times the configured rate. That still bounds
+    # abuse; switch CACHES to Redis/Memcached for an exact shared limit.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "login": os.getenv("THROTTLE_LOGIN", "10/min"),
+        "register": os.getenv("THROTTLE_REGISTER", "10/hour"),
+        "password_reset": os.getenv("THROTTLE_PASSWORD_RESET", "5/hour"),
+    },
+    # Behind a proxy REMOTE_ADDR is the proxy itself, which would put every
+    # client in one throttle bucket. With NUM_PROXIES set, DRF reads the address
+    # our own nginx appended to X-Forwarded-For, which a client cannot forge.
+    "NUM_PROXIES": int(os.environ["NUM_PROXIES"]) if os.getenv("NUM_PROXIES") else None,
 }

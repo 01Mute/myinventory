@@ -18,10 +18,10 @@ import {
 export function HomesPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const homesQuery = useQuery({ queryKey: ["homes"], queryFn: () => api.get<Home[]>("/homes/") });
+  const homesQuery = useQuery({ queryKey: ["homes"], queryFn: () => api.getAll<Home>("/homes/") });
   const floorPlansQuery = useQuery({
     queryKey: ["floor-plans"],
-    queryFn: () => api.get<FloorPlan[]>("/floor-plans/")
+    queryFn: () => api.getAll<FloorPlan>("/floor-plans/")
   });
 
   const homes = homesQuery.data ?? [];
