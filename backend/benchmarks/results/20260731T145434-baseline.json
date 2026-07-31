@@ -1,0 +1,308 @@
+{
+  "label": "baseline",
+  "recorded_at": "2026-07-31T14:54:34.058703+00:00",
+  "repeat": 5,
+  "postgres_version": "PostgreSQL 16.14 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+  "tables": [
+    {
+      "relname": "items_itemlocationhistory",
+      "n_live_tup": 5000888,
+      "table_bytes": 466116608,
+      "index_bytes": 311508992
+    },
+    {
+      "relname": "items_itemtag",
+      "n_live_tup": 1500001,
+      "table_bytes": 81567744,
+      "index_bytes": 130850816
+    },
+    {
+      "relname": "items_item",
+      "n_live_tup": 500003,
+      "table_bytes": 94298112,
+      "index_bytes": 67592192
+    },
+    {
+      "relname": "locations_locationnode",
+      "n_live_tup": 51027,
+      "table_bytes": 10248192,
+      "index_bytes": 9388032
+    },
+    {
+      "relname": "items_tag",
+      "n_live_tup": 2004,
+      "table_bytes": 196608,
+      "index_bytes": 278528
+    },
+    {
+      "relname": "items_category",
+      "n_live_tup": 502,
+      "table_bytes": 73728,
+      "index_bytes": 114688
+    },
+    {
+      "relname": "accounts_user",
+      "n_live_tup": 101,
+      "table_bytes": 73728,
+      "index_bytes": 81920
+    },
+    {
+      "relname": "homes_floorplan",
+      "n_live_tup": 202,
+      "table_bytes": 57344,
+      "index_bytes": 49152
+    },
+    {
+      "relname": "homes_home",
+      "n_live_tup": 102,
+      "table_bytes": 49152,
+      "index_bytes": 49152
+    },
+    {
+      "relname": "django_session",
+      "n_live_tup": 6,
+      "table_bytes": 16384,
+      "index_bytes": 49152
+    },
+    {
+      "relname": "auth_permission",
+      "n_live_tup": 60,
+      "table_bytes": 8192,
+      "index_bytes": 49152
+    },
+    {
+      "relname": "django_content_type",
+      "n_live_tup": 15,
+      "table_bytes": 8192,
+      "index_bytes": 32768
+    },
+    {
+      "relname": "django_admin_log",
+      "n_live_tup": 0,
+      "table_bytes": 8192,
+      "index_bytes": 24576
+    },
+    {
+      "relname": "django_migrations",
+      "n_live_tup": 27,
+      "table_bytes": 16384,
+      "index_bytes": 16384
+    },
+    {
+      "relname": "accounts_user_groups",
+      "n_live_tup": 0,
+      "table_bytes": 0,
+      "index_bytes": 32768
+    },
+    {
+      "relname": "accounts_user_user_permissions",
+      "n_live_tup": 0,
+      "table_bytes": 0,
+      "index_bytes": 32768
+    },
+    {
+      "relname": "auth_group_permissions",
+      "n_live_tup": 0,
+      "table_bytes": 0,
+      "index_bytes": 32768
+    },
+    {
+      "relname": "auth_group",
+      "n_live_tup": 0,
+      "table_bytes": 0,
+      "index_bytes": 24576
+    },
+    {
+      "relname": "accounts_passwordresetcode",
+      "n_live_tup": 0,
+      "table_bytes": 0,
+      "index_bytes": 16384
+    }
+  ],
+  "cases": [
+    {
+      "name": "item_search_page",
+      "description": "검색 ?q= 의 페이지 조회 (5중 OR icontains + 3테이블 조인 + DISTINCT)",
+      "sql": "SELECT DISTINCT \"items_item\".\"id\", \"items_item\".\"owner_id\", \"items_item\".\"name\", \"items_item\".\"category_id\", \"items_item\".\"description\", \"items_item\".\"quantity\", \"items_item\".\"current_location_node_id\", \"items_item\".\"photo\", \"items_item\".\"purchase_price\", \"items_item\".\"purchase_date\", \"items_item\".\"status\", \"items_item\".\"last_checked_at\", \"items_item\".\"created_at\", \"items_item\".\"updated_at\", \"items_category\".\"id\", \"items_category\".\"owner_id\", \"items_category\".\"name\", \"items_category\".\"created_at\", \"items_category\".\"updated_at\", \"locations_locationnode\".\"id\", \"locations_locationnode\".\"home_id\", \"locations_locationnode\".\"floor_plan_id\", \"locations_locationnode\".\"parent_id\", \"locations_locationnode\".\"node_type\", \"locations_locationnode\".\"code\", \"locations_locationnode\".\"name\", \"locations_locationnode\".\"full_code\", \"locations_locationnode\".\"path\", \"locations_locationnode\".\"level\", \"locations_locationnode\".\"geometry_json\", \"locations_locationnode\".\"metadata_json\", \"locations_locationnode\".\"sort_order\", \"locations_locationnode\".\"created_at\", \"locations_locationnode\".\"updated_at\" FROM \"items_item\" LEFT OUTER JOIN \"items_itemtag\" ON (\"items_item\".\"id\" = \"items_itemtag\".\"item_id\") LEFT OUTER JOIN \"items_tag\" ON (\"items_itemtag\".\"tag_id\" = \"items_tag\".\"id\") LEFT OUTER JOIN \"locations_locationnode\" ON (\"items_item\".\"current_location_node_id\" = \"locations_locationnode\".\"id\") LEFT OUTER JOIN \"items_category\" ON (\"items_item\".\"category_id\" = \"items_category\".\"id\") WHERE (\"items_item\".\"owner_id\" = 1000000 AND (UPPER(\"items_item\".\"name\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"items_item\".\"description\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"items_tag\".\"name\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"locations_locationnode\".\"full_code\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"locations_locationnode\".\"path\"::text) LIKE UPPER('%드라이버%'))) ORDER BY \"items_item\".\"name\" ASC, \"items_item\".\"id\" ASC LIMIT 200",
+      "query_count": 2,
+      "setup_queries": 0,
+      "median_ms": 29.732,
+      "min_ms": 29.182,
+      "max_ms": 29.883,
+      "planning_ms": 1.811,
+      "node_type": "Limit",
+      "plan_rows": 4,
+      "actual_rows": 200,
+      "hit_blocks": 18913,
+      "read_blocks": 0,
+      "samples": [
+        29.581,
+        29.732,
+        29.182,
+        29.778,
+        29.883
+      ]
+    },
+    {
+      "name": "item_search_count",
+      "description": "검색 ?q= 의 총건수 조회 (페이지네이션이 함께 실행하는 절반)",
+      "sql": "SELECT COUNT(*) FROM (SELECT DISTINCT \"items_item\".\"id\" AS \"col1\", \"items_item\".\"owner_id\" AS \"col2\", \"items_item\".\"name\" AS \"col3\", \"items_item\".\"category_id\" AS \"col4\", \"items_item\".\"description\" AS \"col5\", \"items_item\".\"quantity\" AS \"col6\", \"items_item\".\"current_location_node_id\" AS \"col7\", \"items_item\".\"photo\" AS \"col8\", \"items_item\".\"purchase_price\" AS \"col9\", \"items_item\".\"purchase_date\" AS \"col10\", \"items_item\".\"status\" AS \"col11\", \"items_item\".\"last_checked_at\" AS \"col12\", \"items_item\".\"created_at\" AS \"col13\", \"items_item\".\"updated_at\" AS \"col14\" FROM \"items_item\" LEFT OUTER JOIN \"items_itemtag\" ON (\"items_item\".\"id\" = \"items_itemtag\".\"item_id\") LEFT OUTER JOIN \"items_tag\" ON (\"items_itemtag\".\"tag_id\" = \"items_tag\".\"id\") LEFT OUTER JOIN \"locations_locationnode\" ON (\"items_item\".\"current_location_node_id\" = \"locations_locationnode\".\"id\") WHERE (\"items_item\".\"owner_id\" = 1000000 AND (UPPER(\"items_item\".\"name\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"items_item\".\"description\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"items_tag\".\"name\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"locations_locationnode\".\"full_code\"::text) LIKE UPPER('%드라이버%') OR UPPER(\"locations_locationnode\".\"path\"::text) LIKE UPPER('%드라이버%')))) subquery",
+      "query_count": 1,
+      "setup_queries": 0,
+      "median_ms": 24.625,
+      "min_ms": 24.424,
+      "max_ms": 25.31,
+      "planning_ms": 0.717,
+      "node_type": "Aggregate",
+      "plan_rows": 1,
+      "actual_rows": 1,
+      "hit_blocks": 16641,
+      "read_blocks": 0,
+      "samples": [
+        24.424,
+        25.31,
+        24.577,
+        24.627,
+        24.625
+      ]
+    },
+    {
+      "name": "item_by_location_code",
+      "description": "위치코드 접두 검색 ?location_code= (full_code icontains)",
+      "sql": "SELECT DISTINCT \"items_item\".\"id\", \"items_item\".\"owner_id\", \"items_item\".\"name\", \"items_item\".\"category_id\", \"items_item\".\"description\", \"items_item\".\"quantity\", \"items_item\".\"current_location_node_id\", \"items_item\".\"photo\", \"items_item\".\"purchase_price\", \"items_item\".\"purchase_date\", \"items_item\".\"status\", \"items_item\".\"last_checked_at\", \"items_item\".\"created_at\", \"items_item\".\"updated_at\", \"items_category\".\"id\", \"items_category\".\"owner_id\", \"items_category\".\"name\", \"items_category\".\"created_at\", \"items_category\".\"updated_at\", \"locations_locationnode\".\"id\", \"locations_locationnode\".\"home_id\", \"locations_locationnode\".\"floor_plan_id\", \"locations_locationnode\".\"parent_id\", \"locations_locationnode\".\"node_type\", \"locations_locationnode\".\"code\", \"locations_locationnode\".\"name\", \"locations_locationnode\".\"full_code\", \"locations_locationnode\".\"path\", \"locations_locationnode\".\"level\", \"locations_locationnode\".\"geometry_json\", \"locations_locationnode\".\"metadata_json\", \"locations_locationnode\".\"sort_order\", \"locations_locationnode\".\"created_at\", \"locations_locationnode\".\"updated_at\" FROM \"items_item\" INNER JOIN \"locations_locationnode\" ON (\"items_item\".\"current_location_node_id\" = \"locations_locationnode\".\"id\") LEFT OUTER JOIN \"items_category\" ON (\"items_item\".\"category_id\" = \"items_category\".\"id\") WHERE (\"items_item\".\"owner_id\" = 1000000 AND UPPER(\"locations_locationnode\".\"full_code\"::text) LIKE UPPER('%R1%')) ORDER BY \"items_item\".\"name\" ASC, \"items_item\".\"id\" ASC LIMIT 200",
+      "query_count": 2,
+      "setup_queries": 0,
+      "median_ms": 18.79,
+      "min_ms": 18.462,
+      "max_ms": 20.96,
+      "planning_ms": 0.921,
+      "node_type": "Limit",
+      "plan_rows": 200,
+      "actual_rows": 200,
+      "hit_blocks": 1369,
+      "read_blocks": 0,
+      "samples": [
+        18.79,
+        18.462,
+        18.769,
+        19.683,
+        20.96
+      ]
+    },
+    {
+      "name": "item_by_leaf_node",
+      "description": "단일 위치노드의 아이템 조회 ?location_node_id=",
+      "sql": "SELECT DISTINCT \"items_item\".\"id\", \"items_item\".\"owner_id\", \"items_item\".\"name\", \"items_item\".\"category_id\", \"items_item\".\"description\", \"items_item\".\"quantity\", \"items_item\".\"current_location_node_id\", \"items_item\".\"photo\", \"items_item\".\"purchase_price\", \"items_item\".\"purchase_date\", \"items_item\".\"status\", \"items_item\".\"last_checked_at\", \"items_item\".\"created_at\", \"items_item\".\"updated_at\", \"items_category\".\"id\", \"items_category\".\"owner_id\", \"items_category\".\"name\", \"items_category\".\"created_at\", \"items_category\".\"updated_at\", \"locations_locationnode\".\"id\", \"locations_locationnode\".\"home_id\", \"locations_locationnode\".\"floor_plan_id\", \"locations_locationnode\".\"parent_id\", \"locations_locationnode\".\"node_type\", \"locations_locationnode\".\"code\", \"locations_locationnode\".\"name\", \"locations_locationnode\".\"full_code\", \"locations_locationnode\".\"path\", \"locations_locationnode\".\"level\", \"locations_locationnode\".\"geometry_json\", \"locations_locationnode\".\"metadata_json\", \"locations_locationnode\".\"sort_order\", \"locations_locationnode\".\"created_at\", \"locations_locationnode\".\"updated_at\" FROM \"items_item\" INNER JOIN \"locations_locationnode\" ON (\"items_item\".\"current_location_node_id\" = \"locations_locationnode\".\"id\") LEFT OUTER JOIN \"items_category\" ON (\"items_item\".\"category_id\" = \"items_category\".\"id\") WHERE (\"items_item\".\"owner_id\" = 1000000 AND \"items_item\".\"current_location_node_id\" = 1000063) ORDER BY \"items_item\".\"name\" ASC, \"items_item\".\"id\" ASC LIMIT 200",
+      "query_count": 2,
+      "setup_queries": 1,
+      "median_ms": 0.206,
+      "min_ms": 0.179,
+      "max_ms": 0.251,
+      "planning_ms": 0.49,
+      "node_type": "Limit",
+      "plan_rows": 1,
+      "actual_rows": 12,
+      "hit_blocks": 87,
+      "read_blocks": 0,
+      "samples": [
+        0.196,
+        0.179,
+        0.251,
+        0.206,
+        0.237
+      ]
+    },
+    {
+      "name": "item_list_unfiltered",
+      "description": "필터 없는 아이템 목록 첫 페이지",
+      "sql": "SELECT DISTINCT \"items_item\".\"id\", \"items_item\".\"owner_id\", \"items_item\".\"name\", \"items_item\".\"category_id\", \"items_item\".\"description\", \"items_item\".\"quantity\", \"items_item\".\"current_location_node_id\", \"items_item\".\"photo\", \"items_item\".\"purchase_price\", \"items_item\".\"purchase_date\", \"items_item\".\"status\", \"items_item\".\"last_checked_at\", \"items_item\".\"created_at\", \"items_item\".\"updated_at\", \"items_category\".\"id\", \"items_category\".\"owner_id\", \"items_category\".\"name\", \"items_category\".\"created_at\", \"items_category\".\"updated_at\", \"locations_locationnode\".\"id\", \"locations_locationnode\".\"home_id\", \"locations_locationnode\".\"floor_plan_id\", \"locations_locationnode\".\"parent_id\", \"locations_locationnode\".\"node_type\", \"locations_locationnode\".\"code\", \"locations_locationnode\".\"name\", \"locations_locationnode\".\"full_code\", \"locations_locationnode\".\"path\", \"locations_locationnode\".\"level\", \"locations_locationnode\".\"geometry_json\", \"locations_locationnode\".\"metadata_json\", \"locations_locationnode\".\"sort_order\", \"locations_locationnode\".\"created_at\", \"locations_locationnode\".\"updated_at\" FROM \"items_item\" LEFT OUTER JOIN \"items_category\" ON (\"items_item\".\"category_id\" = \"items_category\".\"id\") LEFT OUTER JOIN \"locations_locationnode\" ON (\"items_item\".\"current_location_node_id\" = \"locations_locationnode\".\"id\") WHERE \"items_item\".\"owner_id\" = 1000000 ORDER BY \"items_item\".\"name\" ASC, \"items_item\".\"id\" ASC LIMIT 200",
+      "query_count": 2,
+      "setup_queries": 0,
+      "median_ms": 1.118,
+      "min_ms": 1.077,
+      "max_ms": 1.266,
+      "planning_ms": 0.635,
+      "node_type": "Limit",
+      "plan_rows": 200,
+      "actual_rows": 200,
+      "hit_blocks": 776,
+      "read_blocks": 0,
+      "samples": [
+        1.118,
+        1.077,
+        1.266,
+        1.104,
+        1.123
+      ]
+    },
+    {
+      "name": "item_history",
+      "description": "아이템 1건의 이동이력 (이력 테이블 전체에서 추출)",
+      "sql": "SELECT \"items_itemlocationhistory\".\"id\", \"items_itemlocationhistory\".\"item_id\", \"items_itemlocationhistory\".\"from_location_node_id\", \"items_itemlocationhistory\".\"to_location_node_id\", \"items_itemlocationhistory\".\"memo\", \"items_itemlocationhistory\".\"moved_at\", \"items_itemlocationhistory\".\"created_by_id\", \"items_itemlocationhistory\".\"created_at\", \"locations_locationnode\".\"id\", \"locations_locationnode\".\"home_id\", \"locations_locationnode\".\"floor_plan_id\", \"locations_locationnode\".\"parent_id\", \"locations_locationnode\".\"node_type\", \"locations_locationnode\".\"code\", \"locations_locationnode\".\"name\", \"locations_locationnode\".\"full_code\", \"locations_locationnode\".\"path\", \"locations_locationnode\".\"level\", \"locations_locationnode\".\"geometry_json\", \"locations_locationnode\".\"metadata_json\", \"locations_locationnode\".\"sort_order\", \"locations_locationnode\".\"created_at\", \"locations_locationnode\".\"updated_at\", T4.\"id\", T4.\"home_id\", T4.\"floor_plan_id\", T4.\"parent_id\", T4.\"node_type\", T4.\"code\", T4.\"name\", T4.\"full_code\", T4.\"path\", T4.\"level\", T4.\"geometry_json\", T4.\"metadata_json\", T4.\"sort_order\", T4.\"created_at\", T4.\"updated_at\", \"accounts_user\".\"id\", \"accounts_user\".\"password\", \"accounts_user\".\"last_login\", \"accounts_user\".\"is_superuser\", \"accounts_user\".\"username\", \"accounts_user\".\"first_name\", \"accounts_user\".\"last_name\", \"accounts_user\".\"is_staff\", \"accounts_user\".\"is_active\", \"accounts_user\".\"date_joined\", \"accounts_user\".\"email\", \"accounts_user\".\"nickname\", \"accounts_user\".\"created_at\", \"accounts_user\".\"updated_at\" FROM \"items_itemlocationhistory\" LEFT OUTER JOIN \"locations_locationnode\" ON (\"items_itemlocationhistory\".\"from_location_node_id\" = \"locations_locationnode\".\"id\") LEFT OUTER JOIN \"locations_locationnode\" T4 ON (\"items_itemlocationhistory\".\"to_location_node_id\" = T4.\"id\") LEFT OUTER JOIN \"accounts_user\" ON (\"items_itemlocationhistory\".\"created_by_id\" = \"accounts_user\".\"id\") WHERE \"items_itemlocationhistory\".\"item_id\" = 1000000 ORDER BY \"items_itemlocationhistory\".\"moved_at\" DESC, \"items_itemlocationhistory\".\"id\" DESC",
+      "query_count": 1,
+      "setup_queries": 0,
+      "median_ms": 0.236,
+      "min_ms": 0.231,
+      "max_ms": 0.313,
+      "planning_ms": 0.594,
+      "node_type": "Sort",
+      "plan_rows": 17,
+      "actual_rows": 10,
+      "hit_blocks": 68,
+      "read_blocks": 0,
+      "samples": [
+        0.25,
+        0.235,
+        0.236,
+        0.231,
+        0.313
+      ]
+    },
+    {
+      "name": "location_list",
+      "description": "위치노드 목록 첫 페이지",
+      "sql": "SELECT \"locations_locationnode\".\"id\", \"locations_locationnode\".\"home_id\", \"locations_locationnode\".\"floor_plan_id\", \"locations_locationnode\".\"parent_id\", \"locations_locationnode\".\"node_type\", \"locations_locationnode\".\"code\", \"locations_locationnode\".\"name\", \"locations_locationnode\".\"full_code\", \"locations_locationnode\".\"path\", \"locations_locationnode\".\"level\", \"locations_locationnode\".\"geometry_json\", \"locations_locationnode\".\"metadata_json\", \"locations_locationnode\".\"sort_order\", \"locations_locationnode\".\"created_at\", \"locations_locationnode\".\"updated_at\", \"homes_home\".\"id\", \"homes_home\".\"owner_id\", \"homes_home\".\"name\", \"homes_home\".\"address_optional\", \"homes_home\".\"created_at\", \"homes_home\".\"updated_at\", \"homes_floorplan\".\"id\", \"homes_floorplan\".\"home_id\", \"homes_floorplan\".\"name\", \"homes_floorplan\".\"width\", \"homes_floorplan\".\"height\", \"homes_floorplan\".\"unit\", \"homes_floorplan\".\"background_image\", \"homes_floorplan\".\"created_at\", \"homes_floorplan\".\"updated_at\", T5.\"id\", T5.\"home_id\", T5.\"floor_plan_id\", T5.\"parent_id\", T5.\"node_type\", T5.\"code\", T5.\"name\", T5.\"full_code\", T5.\"path\", T5.\"level\", T5.\"geometry_json\", T5.\"metadata_json\", T5.\"sort_order\", T5.\"created_at\", T5.\"updated_at\" FROM \"locations_locationnode\" INNER JOIN \"homes_home\" ON (\"locations_locationnode\".\"home_id\" = \"homes_home\".\"id\") LEFT OUTER JOIN \"homes_floorplan\" ON (\"locations_locationnode\".\"floor_plan_id\" = \"homes_floorplan\".\"id\") LEFT OUTER JOIN \"locations_locationnode\" T5 ON (\"locations_locationnode\".\"parent_id\" = T5.\"id\") WHERE \"homes_home\".\"owner_id\" = 1000000 ORDER BY \"locations_locationnode\".\"home_id\" ASC, \"locations_locationnode\".\"floor_plan_id\" ASC, \"locations_locationnode\".\"path\" ASC, \"locations_locationnode\".\"sort_order\" ASC, \"locations_locationnode\".\"id\" ASC LIMIT 200",
+      "query_count": 2,
+      "setup_queries": 0,
+      "median_ms": 1.923,
+      "min_ms": 1.798,
+      "max_ms": 2.073,
+      "planning_ms": 0.754,
+      "node_type": "Limit",
+      "plan_rows": 200,
+      "actual_rows": 200,
+      "hit_blocks": 1532,
+      "read_blocks": 0,
+      "samples": [
+        2.073,
+        1.923,
+        1.798,
+        1.856,
+        2.034
+      ]
+    },
+    {
+      "name": "location_subtree_rows",
+      "description": "집 1채의 전체 위치노드 (트리 직렬화가 읽는 단일 쿼리)",
+      "sql": "SELECT \"locations_locationnode\".\"id\", \"locations_locationnode\".\"home_id\", \"locations_locationnode\".\"floor_plan_id\", \"locations_locationnode\".\"parent_id\", \"locations_locationnode\".\"node_type\", \"locations_locationnode\".\"code\", \"locations_locationnode\".\"name\", \"locations_locationnode\".\"full_code\", \"locations_locationnode\".\"path\", \"locations_locationnode\".\"level\", \"locations_locationnode\".\"geometry_json\", \"locations_locationnode\".\"metadata_json\", \"locations_locationnode\".\"sort_order\", \"locations_locationnode\".\"created_at\", \"locations_locationnode\".\"updated_at\" FROM \"locations_locationnode\" WHERE \"locations_locationnode\".\"home_id\" = 1000000 ORDER BY \"locations_locationnode\".\"path\" ASC, \"locations_locationnode\".\"sort_order\" ASC, \"locations_locationnode\".\"id\" ASC",
+      "query_count": 1,
+      "setup_queries": 0,
+      "median_ms": 0.629,
+      "min_ms": 0.612,
+      "max_ms": 0.676,
+      "planning_ms": 0.046,
+      "node_type": "Sort",
+      "plan_rows": 520,
+      "actual_rows": 510,
+      "hit_blocks": 13,
+      "read_blocks": 0,
+      "samples": [
+        0.676,
+        0.629,
+        0.645,
+        0.612,
+        0.614
+      ]
+    }
+  ]
+}
