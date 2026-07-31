@@ -85,13 +85,13 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-    # nginx reads the certificate once at startup and holds it, so a renewal
-    # done by the certbot container is invisible until nginx reloads. The loop
-    # reloads periodically; renewals happen roughly monthly, so a 12h lag is
-    # far inside the 30 days certbot leaves before expiry.
-    command: >
-      sh -c "while :; do sleep 12h & wait $${!}; nginx -s reload; done &
-             nginx -g 'daemon off;'"
+    # Deliberately no `command:` override here. The nginx image only runs its
+    # /docker-entrypoint.d/ scripts — including the envsubst pass that renders
+    # default.conf.template — when the command starts with `nginx`. Overriding
+    # it with a shell wrapper silently skips template rendering and the stock
+    # config is served instead. nginx must be reloaded after a renewal to pick
+    # up the new certificate; scripts/reload-cron.sh installs that as a host
+    # cron entry rather than smuggling a loop in here.
 
   certbot:
     image: certbot/certbot:latest
