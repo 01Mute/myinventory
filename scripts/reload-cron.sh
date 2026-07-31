@@ -12,6 +12,14 @@
 set -eu
 
 APP_DIR=$(cd "$(dirname "$0")/.." && pwd)
+
+# Amazon Linux 2023's minimal image ships without cron at all, so this is not
+# the safe assumption it looks like on a normal distro.
+if ! command -v crontab >/dev/null 2>&1; then
+  echo "cron is not installed — installing cronie"
+  sudo dnf install -y cronie >/dev/null 2>&1 || sudo apt-get install -y -qq cron
+  sudo systemctl enable --now crond 2>/dev/null || sudo systemctl enable --now cron
+fi
 MARKER="# myinventory-nginx-reload"
 LINE="17 4 * * * cd $APP_DIR && docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload >/dev/null 2>&1 $MARKER"
 
