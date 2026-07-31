@@ -149,6 +149,24 @@ Frontend: http://localhost:5173/
 Floor Plan Editor: http://localhost:5173/editor
 ```
 
+테스트 계정과 예시 데이터 생성:
+
+```bash
+docker compose exec backend python manage.py seed_demo
+```
+
+로그인 화면의 테스트 계정(`test` / `test1234`)은 이 명령으로 만들어집니다.
+집 2개, 도면 2개, 위치 10개, 물건 17개와 물건 사진, 이동 이력이 함께 생성됩니다.
+다시 실행하면 테스트 계정의 데이터를 지우고 처음 상태로 되돌립니다.
+
+```bash
+# 계정 정보를 바꾸려면
+docker compose exec backend python manage.py seed_demo --username demo --password demo1234
+```
+
+예시 데이터는 원래 기본키를 그대로 사용하므로, 다른 사용자의 데이터와 겹치면
+명령이 중단됩니다. 그래도 덮어쓰려면 `--force`를 붙입니다.
+
 관리자 계정 생성:
 
 ```bash
