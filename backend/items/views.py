@@ -78,16 +78,25 @@ class ItemViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         previous_location = serializer.instance.current_location_node
-        item = serializer.save()
-        if previous_location_id(previous_location) != previous_location_id(item.current_location_node):
-            ItemLocationHistory.objects.create(
-                item=item,
-                from_location_node=previous_location,
-                to_location_node=item.current_location_node,
-                memo="",
-                moved_at=timezone.now(),
-                created_by=self.request.user,
-            )
+        # The item row and the history row record one event between them, so
+        # they have to commit together. Written without a boundary, a failure
+        # after the item was saved left the item in its new location with no
+        # record that it ever moved, and nothing in the data to show a write had
+        # been lost. The move action already held this boundary; this path is
+        # the same operation reached through PATCH.
+        with transaction.atomic():
+            item = serializer.save()
+            if previous_location_id(previous_location) != previous_location_id(
+                item.current_location_node
+            ):
+                ItemLocationHistory.objects.create(
+                    item=item,
+                    from_location_node=previous_location,
+                    to_location_node=item.current_location_node,
+                    memo="",
+                    moved_at=timezone.now(),
+                    created_by=self.request.user,
+                )
 
     def apply_filters(self, qs):
         params = self.request.query_params

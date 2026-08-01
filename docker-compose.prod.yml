@@ -1,6 +1,12 @@
 services:
   db:
     image: postgres:16-alpine
+    # Postgres puts its dynamic shared memory in /dev/shm, which Docker caps at
+    # 64MB by default. Parallel query workers and parallel index vacuuming both
+    # fail outright once that cap is reached. Sized smaller than the dev value
+    # because this host runs the whole stack in 8GB; /dev/shm is tmpfs, so this
+    # is a ceiling rather than a reservation.
+    shm_size: 256mb
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}

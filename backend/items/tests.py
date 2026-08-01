@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -112,3 +114,43 @@ class ItemApiTests(APITestCase):
             ItemLocationHistory.objects.first().from_location_node,
             self.zone_a,
         )
+
+    def test_update_creates_history_when_location_changes(self):
+        url = reverse("item-detail", args=[self.item.id])
+        response = self.client.patch(
+            url,
+            {"current_location_node": self.zone_b.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(ItemLocationHistory.objects.count(), 1)
+        history = ItemLocationHistory.objects.first()
+        self.assertEqual(history.from_location_node, self.zone_a)
+        self.assertEqual(history.to_location_node, self.zone_b)
+
+    def test_update_rolls_back_the_move_when_history_write_fails(self):
+        """An item and its history row record the same event, so they commit
+        together or not at all.
+
+        The move action already held this boundary; the plain update path wrote
+        the item first and the history row afterwards with nothing tying them
+        together, so a failure in between left an item that had moved with no
+        record of the move."""
+        url = reverse("item-detail", args=[self.item.id])
+
+        with mock.patch.object(
+            ItemLocationHistory.objects,
+            "create",
+            side_effect=RuntimeError("history write failed"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.patch(
+                    url,
+                    {"current_location_node": self.zone_b.id},
+                    format="json",
+                )
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.current_location_node, self.zone_a)
+        self.assertEqual(ItemLocationHistory.objects.count(), 0)

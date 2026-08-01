@@ -1,6 +1,13 @@
 services:
   db:
     image: postgres:16-alpine
+    # Docker gives a container 64MB of /dev/shm, and Postgres allocates its
+    # dynamic shared memory there: parallel query workers and parallel index
+    # vacuuming both fail with "could not resize shared memory segment ... No
+    # space left on device" once a table is large enough to be worth
+    # parallelising. The failure surfaces as a query error, not as a memory
+    # warning, so it is easy to misread as a bug in the query.
+    shm_size: 1gb
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-home_inventory}
       POSTGRES_USER: ${POSTGRES_USER:-home_inventory}
