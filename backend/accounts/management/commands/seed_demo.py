@@ -9,32 +9,12 @@ from django.core.management.color import no_style
 from django.core.serializers import deserialize
 from django.db import connection, transaction
 
-from homes.models import FloorPlan, Home
-from items.models import Category, Item, ItemLocationHistory, ItemTag, Tag
-from locations.models import LocationNode
+from accounts.demo_data import SEEDED_MODELS, apply_owner, owned_queryset
 
 User = get_user_model()
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "demo.json"
 DEMO_ASSETS_DIR = settings.BASE_DIR / "demo_assets"
-
-# The fixture stores ownership as this placeholder pk. It is replaced with the
-# real demo user pk at load time, so the fixture never depends on a user row.
-FIXTURE_OWNER_PK = 2
-
-OWNER_FIELDS = ("owner", "created_by")
-
-# Ordered from least to most dependent, so the summary reads top-down.
-SEEDED_MODELS = (
-    Home,
-    FloorPlan,
-    LocationNode,
-    Category,
-    Tag,
-    Item,
-    ItemTag,
-    ItemLocationHistory,
-)
 
 
 class Command(BaseCommand):
@@ -45,16 +25,24 @@ class Command(BaseCommand):
         parser.add_argument("--password", default="test1234")
         parser.add_argument("--email", default="test@example.com")
         parser.add_argument(
+            "--fixture",
+            help=(
+                "불러올 데이터 파일입니다. backup_demo가 만든 백업의 data.json을 "
+                "지정하면 그 시점으로 복원합니다."
+            ),
+        )
+        parser.add_argument(
             "--force",
             action="store_true",
             help="다른 사용자의 데이터와 기본키가 겹쳐도 진행합니다.",
         )
 
     def handle(self, *args, **options):
-        if not FIXTURE_PATH.exists():
-            raise CommandError(f"예시 데이터 파일이 없습니다: {FIXTURE_PATH}")
+        fixture_path = Path(options["fixture"]) if options["fixture"] else FIXTURE_PATH
+        if not fixture_path.exists():
+            raise CommandError(f"예시 데이터 파일이 없습니다: {fixture_path}")
 
-        objects = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+        objects = json.loads(fixture_path.read_text(encoding="utf-8"))
 
         with transaction.atomic():
             user = self._reset_demo_user(options)
@@ -62,13 +50,16 @@ class Command(BaseCommand):
             self._load(objects, user)
             self._reset_sequences()
 
-        copied = self._copy_demo_assets()
+        copied = self._copy_assets(fixture_path)
 
         self.stdout.write(self.style.SUCCESS("예시 데이터를 생성했습니다."))
         self.stdout.write(f"  로그인: {options['username']} / {options['password']}")
+        # Scoped to the demo user, not model.objects.count(). A global count
+        # reports every row in the table, so on a database that also holds
+        # benchmark data the command claimed to have created millions of rows.
         for model in SEEDED_MODELS:
             label = model._meta.verbose_name
-            self.stdout.write(f"  {label}: {model.objects.count()}건")
+            self.stdout.write(f"  {label}: {owned_queryset(model, user).count()}건")
         self.stdout.write(f"  이미지 파일: {copied}개")
 
     def _reset_demo_user(self, options):
@@ -118,11 +109,7 @@ class Command(BaseCommand):
         )
 
     def _load(self, objects, user):
-        for obj in objects:
-            fields = obj["fields"]
-            for field in OWNER_FIELDS:
-                if fields.get(field) == FIXTURE_OWNER_PK:
-                    fields[field] = user.pk
+        apply_owner(objects, user.pk)
 
         # deserialize().save() writes through save_base(), so LocationNode's
         # custom save() does not recompute the stored code/path/level values.
@@ -140,15 +127,28 @@ class Command(BaseCommand):
             for statement in statements:
                 cursor.execute(statement)
 
-    def _copy_demo_assets(self):
-        if not DEMO_ASSETS_DIR.exists():
+    def _copy_assets(self, fixture_path):
+        """Restore the images the loaded rows point at.
+
+        A backup carries its own media/ beside data.json, and those are the
+        files that particular snapshot referenced. The bundled demo_assets are
+        the right source only for the bundled fixture; using them to restore a
+        backup would put back the wrong photos.
+        """
+        backup_media = fixture_path.parent / "media"
+        if fixture_path != FIXTURE_PATH and backup_media.is_dir():
+            return self._copy_tree(backup_media)
+        return self._copy_tree(DEMO_ASSETS_DIR)
+
+    def _copy_tree(self, source_dir):
+        if not source_dir.exists():
             return 0
 
         copied = 0
-        for source in DEMO_ASSETS_DIR.rglob("*"):
+        for source in source_dir.rglob("*"):
             if not source.is_file():
                 continue
-            target = Path(settings.MEDIA_ROOT) / source.relative_to(DEMO_ASSETS_DIR)
+            target = Path(settings.MEDIA_ROOT) / source.relative_to(source_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
             copied += 1

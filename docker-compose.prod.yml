@@ -67,6 +67,10 @@ services:
     volumes:
       - backend_static:/app/staticfiles
       - backend_media:/app/media
+      # Bind mount, not a named volume: backups exist to be copied off this box,
+      # and a path inside the image would be discarded by the next rebuild —
+      # the one moment a backup has to survive.
+      - ${BACKUP_DIR:-./backups}:/app/backups
     depends_on:
       db:
         condition: service_healthy

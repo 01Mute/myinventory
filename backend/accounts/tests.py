@@ -1,8 +1,22 @@
+import json
+import shutil
+import tempfile
+from datetime import datetime, timedelta
+from io import StringIO
+from pathlib import Path
+
 from django.conf import settings
 from django.core.cache import cache
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
+
+from homes.models import FloorPlan, Home
+from items.models import Category, Item, ItemLocationHistory, Tag
+from locations.models import LocationNode
 
 from .models import User
 
@@ -184,3 +198,142 @@ class OwnershipIsolationTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class BackupDemoTests(TestCase):
+    """The demo account is the one strangers can log into and edit, so a
+    snapshot of it has to be both takeable and restorable."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+        self.user = User.objects.create_user(
+            username="test",
+            email="test@example.com",
+            password="password123",
+        )
+        self.home = Home.objects.create(owner=self.user, name="My Home")
+        self.floor_plan = FloorPlan.objects.create(home=self.home, name="1F")
+        self.room = LocationNode.objects.create(
+            home=self.home,
+            floor_plan=self.floor_plan,
+            node_type=LocationNode.NodeType.ROOM,
+            code="LIVING",
+            name="Living Room",
+        )
+        self.shelf = LocationNode.objects.create(
+            home=self.home,
+            floor_plan=self.floor_plan,
+            parent=self.room,
+            node_type=LocationNode.NodeType.BOX,
+            code="A",
+            name="Shelf A",
+        )
+        self.category = Category.objects.create(owner=self.user, name="Tools")
+        self.tag = Tag.objects.create(owner=self.user, name="spare")
+        self.item = Item.objects.create(
+            owner=self.user,
+            name="Passport",
+            category=self.category,
+            current_location_node=self.shelf,
+        )
+        self.item.tags.add(self.tag)
+        ItemLocationHistory.objects.create(
+            item=self.item,
+            from_location_node=self.room,
+            to_location_node=self.shelf,
+            created_by=self.user,
+        )
+
+    def backup(self, **kwargs):
+        call_command("backup_demo", out=str(self.root), stdout=StringIO(), **kwargs)
+        return sorted(self.root.glob("demo-*"))[-1]
+
+    def test_writes_a_snapshot_of_the_account(self):
+        directory = self.backup()
+        objects = json.loads((directory / "data.json").read_text(encoding="utf-8"))
+
+        models = [row["model"] for row in objects]
+        self.assertIn("items.item", models)
+        self.assertIn("items.itemlocationhistory", models)
+        self.assertIn("locations.locationnode", models)
+
+    def test_stores_ownership_as_the_fixture_placeholder(self):
+        """Backups have to be loadable by seed_demo, which swaps a placeholder
+        owner for whichever user row it just created. A real user id baked into
+        the file would restore onto an account that may not exist."""
+        directory = self.backup()
+        objects = json.loads((directory / "data.json").read_text(encoding="utf-8"))
+
+        owners = {
+            row["fields"]["owner"] for row in objects if "owner" in row["fields"]
+        }
+        self.assertEqual(owners, {2})
+        self.assertNotIn(self.user.pk, owners)
+
+    def test_leaves_other_accounts_out(self):
+        stranger = User.objects.create_user(
+            username="stranger",
+            email="stranger@example.com",
+            password="password123",
+        )
+        stranger_home = Home.objects.create(owner=stranger, name="Not Mine")
+        Item.objects.create(owner=stranger, name="Not Yours")
+
+        directory = self.backup()
+        payload = (directory / "data.json").read_text(encoding="utf-8")
+
+        self.assertNotIn("Not Yours", payload)
+        self.assertNotIn(stranger_home.name, payload)
+
+    def test_restores_the_account_from_a_backup(self):
+        directory = self.backup()
+        Item.objects.filter(owner=self.user).delete()
+        LocationNode.objects.filter(home__owner=self.user).delete()
+        self.assertEqual(Item.objects.count(), 0)
+
+        call_command(
+            "seed_demo",
+            fixture=str(directory / "data.json"),
+            force=True,
+            stdout=StringIO(),
+        )
+
+        restored = User.objects.get(username="test")
+        item = Item.objects.get(owner=restored)
+        self.assertEqual(item.name, "Passport")
+        self.assertEqual(item.current_location_node.full_code, "LIVING-A")
+        self.assertEqual(item.current_location_node.path, "Living Room / Shelf A")
+        self.assertEqual(
+            ItemLocationHistory.objects.filter(item__owner=restored).count(), 1
+        )
+
+    def test_prunes_backups_past_the_retention_window(self):
+        stale = self.root / "demo-20200101-000000"
+        stale.mkdir(parents=True)
+        recent_stamp = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d-%H%M%S")
+        recent = self.root / f"demo-{recent_stamp}"
+        recent.mkdir(parents=True)
+        unrelated = self.root / "keep-me"
+        unrelated.mkdir(parents=True)
+
+        self.backup(keep_days=14)
+
+        self.assertFalse(stale.exists())
+        self.assertTrue(recent.exists())
+        self.assertTrue(unrelated.exists())
+
+    def test_keeps_everything_when_retention_is_disabled(self):
+        stale = self.root / "demo-20200101-000000"
+        stale.mkdir(parents=True)
+
+        self.backup(keep_days=0)
+
+        self.assertTrue(stale.exists())
+
+    def test_reports_a_missing_account(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                "backup_demo", out=str(self.root), username="nobody", stdout=StringIO()
+            )

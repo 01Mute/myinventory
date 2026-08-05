@@ -135,6 +135,11 @@ STATIC_ROOT = BASE_DIR / os.getenv("STATIC_ROOT", "staticfiles")
 MEDIA_URL = os.getenv("MEDIA_URL", "/media/")
 MEDIA_ROOT = BASE_DIR / os.getenv("MEDIA_ROOT", "media")
 
+# Where backup_demo writes. In production this has to be a bind-mounted host
+# directory: anything written elsewhere lives in the container layer and is
+# gone at the next rebuild, which is the one moment a backup has to survive.
+BACKUP_ROOT = BASE_DIR / os.getenv("BACKUP_ROOT", "backups")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = env_list(

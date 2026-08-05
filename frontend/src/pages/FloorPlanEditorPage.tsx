@@ -922,6 +922,16 @@ export function FloorPlanEditorPage() {
   }
 
   function startPointer(event: PointerEvent<SVGElement>, node: LocationNode, rect: RectGeometry, mode: PointerMode) {
+    // Only the primary button moves or resizes a shape. Without this check any
+    // button started a drag, so pressing the wheel to scroll dragged whatever
+    // was under the cursor, and a right-click nudged the shape before opening
+    // the context menu. preventDefault still runs so the wheel button does not
+    // fall through to the browser's autoscroll.
+    if (event.button !== 0) {
+      event.preventDefault();
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
     panRef.current = null;
