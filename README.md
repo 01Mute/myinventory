@@ -191,6 +191,46 @@ docker compose exec backend python manage.py seed_demo --username demo --passwor
 예시 데이터는 원래 기본키를 그대로 사용하므로, 다른 사용자의 데이터와 겹치면
 명령이 중단됩니다. 그래도 덮어쓰려면 `--force`를 붙입니다.
 
+### 테스트 계정 백업과 복원
+
+테스트 계정은 누구나 로그인할 수 있어서, 곧 아무나 고칠 수 있는 계정이기도 합니다.
+`backup_demo`는 그 계정의 데이터와 사진을 날짜별 디렉터리로 남깁니다.
+
+```bash
+docker compose exec backend python manage.py backup_demo
+```
+
+```
+backups/demo-20260803-034100/
+  data.json      # 계정이 소유한 행 전부 (소유자는 픽스처 플레이스홀더로 기록)
+  media/         # 그 행들이 참조하는 이미지만
+```
+
+`data.json`은 `seed_demo`가 읽는 형식과 같아서 그대로 되돌릴 수 있습니다.
+백업 디렉터리를 지정하면 이미지도 그 안의 `media/`에서 복원합니다.
+
+```bash
+docker compose exec backend python manage.py seed_demo \
+  --fixture backups/demo-20260803-034100/data.json
+```
+
+| 옵션 | 설명 |
+|---|---|
+| `--username` | 백업할 계정. 기본값 `test` |
+| `--out` | 저장 위치. 기본값은 `BACKUP_ROOT` 설정 |
+| `--keep-days` | 이 일수보다 오래된 백업을 삭제. 기본 14일, `0`이면 삭제 안 함 |
+| `--no-media` | 이미지를 빼고 행 데이터만 백업 |
+
+백업은 이름 붙은 볼륨이 아니라 **호스트 바인드 마운트**(`BACKUP_DIR`, 기본 `./backups`)에
+씁니다. 백업의 목적이 이 서버 밖으로 복사해 두는 것이고, 이미지 안의 경로는 다음
+재빌드 때 사라지기 때문입니다. 하필 백업이 살아남아야 하는 그 순간에 말입니다.
+
+운영 서버에서 매일 자동 실행하려면:
+
+```bash
+sh ~/myinventory/scripts/backup-cron.sh
+```
+
 관리자 계정 생성:
 
 ```bash

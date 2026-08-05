@@ -6,6 +6,10 @@ PLAN.md
 backend/media/
 backend/staticfiles/
 backend/db.sqlite3
+
+# Demo account backups. Written by backup_demo, kept on the host so they can be
+# copied off the box; never part of the source tree.
+backups/
 backend/**/__pycache__/
 backend/**/*.pyc
 
