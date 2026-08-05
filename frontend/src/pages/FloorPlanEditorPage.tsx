@@ -75,6 +75,10 @@ const rectLimits: Record<
   FURNITURE: { minWidth: 40, minHeight: 30, maxWidth: 1600, maxHeight: 1200 }
 };
 
+// PointerEvent.button: 0 is primary, 1 is the wheel pressed as a button. The
+// wheel is the editor's dedicated pan control, so it never edits a shape.
+const WHEEL_BUTTON = 1;
+
 type PointerMode = "move" | "resize";
 
 type DragState = {
@@ -923,12 +927,18 @@ export function FloorPlanEditorPage() {
 
   function startPointer(event: PointerEvent<SVGElement>, node: LocationNode, rect: RectGeometry, mode: PointerMode) {
     // Only the primary button moves or resizes a shape. Without this check any
-    // button started a drag, so pressing the wheel to scroll dragged whatever
-    // was under the cursor, and a right-click nudged the shape before opening
-    // the context menu. preventDefault still runs so the wheel button does not
-    // fall through to the browser's autoscroll.
+    // button started a drag, so pressing the wheel dragged whatever was under
+    // the cursor and a right-click nudged the shape before opening the context
+    // menu.
+    //
+    // The wheel button pans instead, and hands the gesture over here rather
+    // than at the canvas level: a pan that only worked over empty canvas would
+    // leave dead zones wherever a shape happens to sit. Right-click is left to
+    // the browser.
     if (event.button !== 0) {
-      event.preventDefault();
+      if (event.button === WHEEL_BUTTON) {
+        startCanvasPan(event);
+      }
       return;
     }
 
@@ -996,14 +1006,30 @@ export function FloorPlanEditorPage() {
     if (dragRef.current) {
       return;
     }
-    const target = event.target as SVGElement;
-    if (target.closest(".shape") || target.closest(".resize-handle")) {
-      return;
+
+    // The wheel button pans from anywhere, shapes included — that is the whole
+    // point of having a dedicated pan button. The primary button only pans from
+    // empty canvas, otherwise pressing a shape would scroll the view instead of
+    // selecting and moving it.
+    const withWheel = event.button === WHEEL_BUTTON;
+    if (!withWheel) {
+      if (event.button !== 0) {
+        return;
+      }
+      const target = event.target as SVGElement;
+      if (target.closest(".shape") || target.closest(".resize-handle")) {
+        return;
+      }
     }
+
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    setSelectedNodeId(null);
+    // Pressing empty canvas clears the selection. Panning is a view gesture and
+    // must not, or every wheel-drag would drop whatever the user was working on.
+    if (!withWheel) {
+      setSelectedNodeId(null);
+    }
     panRef.current = {
       startClientX: event.clientX,
       startClientY: event.clientY,
